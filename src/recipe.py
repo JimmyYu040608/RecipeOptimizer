@@ -45,7 +45,7 @@ def load_recipes() -> List[Recipe]:
     path = os.path.join(os.path.dirname(__file__), '..', 'resources', 'data.json')
     recipes = []
     # Open and parse the JSON file
-    with open(path, 'r') as f:
+    with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
     # Iterate through each recipe in the "recipes" object
