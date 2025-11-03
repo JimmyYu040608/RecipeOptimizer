@@ -43,6 +43,14 @@ class Recipe:
     def add_output(self, product: Product, rate: float):
         self.outputs[product] = rate
     
+    def in_products(self) -> Set[Product]:
+        """ Get all input products for this recipe """
+        return set(self.inputs.keys())
+    
+    def out_products(self) -> Set[Product]:
+        """ Get all output products for this recipe """
+        return set(self.outputs.keys())
+    
     def products_used(self) -> Set[Product]:
         """ Get all products used in this recipe """
         return set(self.inputs.keys()).union(set(self.outputs.keys()))

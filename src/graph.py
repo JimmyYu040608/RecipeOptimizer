@@ -1,5 +1,5 @@
 from typing import List, Dict
-from recipe import Product, Recipe
+from src.recipe import Product, Recipe
 
 
 class MachineVertex:
