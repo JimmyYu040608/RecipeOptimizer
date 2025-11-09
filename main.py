@@ -26,6 +26,7 @@ def main():
 
     # Create problem
     problem = ProductionProblem(recipes, inputs, outputs)
+        
     if problem.validate():
         print("Problem is valid")
     else:

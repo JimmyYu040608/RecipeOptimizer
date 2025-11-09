@@ -14,6 +14,22 @@ class Building:
     
     def __str__(self):
         return self.name
+    
+    def __repr__(self):
+        return self.name
+    
+    def __eq__(self, other):
+        if isinstance(other, Product):
+            return self.name == other.name
+        return False
+
+    def __hash__(self):
+        return hash(self.name)
+
+    def __lt__(self, other):
+        if isinstance(other, Product):
+            return self.name < other.name
+        return NotImplemented
 
 
 class Product:
@@ -23,6 +39,22 @@ class Product:
 
     def __str__(self):
         return self.name
+    
+    def __repr__(self):
+        return self.name
+    
+    def __eq__(self, other):
+        if isinstance(other, Product):
+            return self.name == other.name
+        return False
+
+    def __hash__(self):
+        return hash(self.name)
+
+    def __lt__(self, other):
+        if isinstance(other, Product):
+            return self.name < other.name
+        return NotImplemented
 
 
 class Recipe:
@@ -35,6 +67,9 @@ class Recipe:
         self.alternate = alternate
     
     def __str__(self):
+        return self.name
+    
+    def __repr__(self):
         return self.name
     
     def add_input(self, product: Product, rate: float):
@@ -65,8 +100,8 @@ class Recipe:
         return net
     
     def description(self):
-        input_str = '\n\t'.join([f"{rate} {product}" for product, rate in self.inputs.items()])
-        output_str = '\n\t'.join([f"{rate} {product}" for product, rate in self.outputs.items()])
+        input_str = "\n\t".join([f"{rate} {product}" for product, rate in self.inputs.items()])
+        output_str = "\n\t".join([f"{rate} {product}" for product, rate in self.outputs.items()])
         return f"{self.name}\nProduced in: {self.building}\nInputs:\n\t{input_str}\nOutputs:\n\t{output_str}"
 
 
@@ -77,35 +112,48 @@ class Recipe:
 def load_recipes() -> List[Recipe]:
     """ Loads recipes from a JSON file """
     
-    path = os.path.join(os.path.dirname(__file__), '..', 'resources', 'data.json')
+    path = os.path.join(os.path.dirname(__file__), "..", "resources", "data.json")
     recipes = []
     # Open and parse the JSON file
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     
+    # Load data related to recipes as well
+    item_data = data["items"] # For getting readable item names from their json name
+    building_data = data["buildings"] # For getting readable building names from their json name
+    recipe_data = data["recipes"]
+    
     # Iterate through each recipe in the "recipes" object
-    for recipe_id, recipe_data in data["recipes"].items():
+    for recipe_id, recipe_content in recipe_data.items():
+        # Ignore recipes which are not related to automated manufacturing (E.g. Those for construction and hand-crafted items)
+        if recipe_content["forBuilding"] or not recipe_content["inMachine"]:
+            continue
+        
         # Extract basic recipe information
-        name = recipe_data["name"]
-        alternate = recipe_data["alternate"]
+        name = recipe_content["name"]
+        alternate = recipe_content["alternate"] # Bool value specified whether this recipe has alternate recipes that give the same product
         
         # Get the building where this recipe is produced (use first one if multiple)
-        building = recipe_data["producedIn"][0] if recipe_data["producedIn"] else "Unknown"
+        building_id = recipe_content["producedIn"][0]
+        building_name = building_data[building_id]["name"]
         
         # Create the recipe object
-        recipe = Recipe(name, building, alternate)
+        recipe = Recipe(name, building_name, alternate)
         
         # Add input ingredients to the recipe
-        for ingredient in recipe_data["ingredients"]:
-            item_name = ingredient["item"]
+        multiplier = 60 / recipe_content["time"] # To convert all amounts to rate per minute
+        for ingredient in recipe_content["ingredients"]:
+            item_id = ingredient["item"]
+            item_name = item_data[item_id]["name"]
             amount = ingredient["amount"]
-            recipe.add_input(item_name, float(amount))
+            recipe.add_input(Product(item_name), float(amount) * multiplier)
         
         # Add output products to the recipe
-        for product in recipe_data["products"]:
-            item_name = product["item"]
+        for product in recipe_content["products"]:
+            item_id = product["item"]
+            item_name = item_data[item_id]["name"]
             amount = product["amount"]
-            recipe.add_output(item_name, float(amount))
+            recipe.add_output(Product(item_name), float(amount) * multiplier)
         
         recipes.append(recipe)
     
