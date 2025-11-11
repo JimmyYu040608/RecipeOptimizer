@@ -11,11 +11,12 @@ RECIPE_COST = 0.01 # Small cost to discourage extraneous recipes
 class ProductionProblem:
     def __init__(self, recipes: List[Recipe], inputs: Dict[Product, float], outputs: Dict[Product, float]):
         self.recipes = recipes
-        self.inputs = inputs
-        self.outputs = outputs
+        self.inputs = inputs # {product: given_rate}
+        self.outputs = outputs # {product: score}
         self._recipe_max = RECIPE_MAX
         self._product_max = PRODUCT_MAX
         self._recipe_cost = RECIPE_COST
+        self.opt_recipe_count = {} # {"recipe_name": (Recipe, int)}
         self.graph = ProductionGraph()
     
     
@@ -58,10 +59,12 @@ class ProductionProblem:
     
     def reduce(self):
         """ Reduce the problem by removing recipes and inputs that are irrevelant to the production of outputs """
+        # TODO
         pass
     
     
     def optimize(self):
+        # TODO: Problem: current optimization makes "fulfiling only one output product" always true
         """ Create a production graph optimizing the given recipes for the specified inputs and outputs """
         
         # Reduce the problem first by removing irrelevant recipes and inputs
@@ -80,14 +83,14 @@ class ProductionProblem:
         # Define decision variable: How can time should each recipe be executed
         # m1, m2, m3... for multiplication of r1, r2, r3...
         # Integer variable bounded from 0 to RECIPE_MAX, with name of the recipes
-        recipe_vars = dict([(r.name, solver.IntVar(0, self.get_recipe_max(), r.name)) for r in self.recipes]) # List of recipe counts, for 100 available recipes, here creates 100 variables to be optimized
+        recipe_vars = dict([(r.name, solver.IntVar(0, self.get_recipe_max(), r.name)) for r in self.recipes]) # List of recipe counts, if there are 100 available recipes, here creates 100 variables to be optimized
         
-        print("Number of variables =", solver.NumVariables())
+        print("\nNumber of variables: ", solver.NumVariables())
         
         # For each product, add a constraint that the total amount is at least 0
         for product in products:
             min_value = -self.inputs[product] if product in self.inputs else 0
-            ct = solver.Constraint(min_value, self.get_product_max(), product)
+            ct = solver.RowConstraint(min_value, self.get_product_max(), product.name)
 
             # Add the contribution of each recipe
             for recipe in self.recipes:
@@ -104,15 +107,21 @@ class ProductionProblem:
 
         solver.Solve()
         
+        # Store optimized recipe counts
+        for recipe in self.recipes:
+            self.opt_recipe_count[recipe.name] = (recipe, recipe_vars[recipe.name].solution_value())
+        
         # DEBUG
-        print("Solution:")
+        print("\nSolution:")
         print(f"Objective value: {objective.Value():.2f}")
 
         print("\nRecipes Used:")
         for recipe in self.recipes:
             var = recipe_vars[recipe.name]
             if var.solution_value():
-                print(f"{recipe.name}: {var.solution_value():.2f}")
+                if not var.solution_value().is_integer():
+                    raise ValueError("Non-integer solution value for recipe count")
+                print(f"{recipe.name}: {var.solution_value()}")
 
         print("\nInputs Remaining:")
         for p, q in self.inputs.items():
@@ -129,6 +138,18 @@ class ProductionProblem:
 
             if q > 0.01:
                 print(f"{p}: {q:.2f}")
+    
+    
+    def plot_optimized_graph(self):
+        # Ensure that the problem is optimized
+        if not self.opt_recipe_count:
+            print("No optimization has been performed yet. Please call optimize() first.")
+            return
+        
+        # Build the production graph topology
+        graph = ProductionGraph()
+        graph.create(self.opt_recipe_count.values(), self.inputs, self.outputs)
+        graph.terminal_display()
 
 
 def validate_product(recipes: List[Recipe], input_products: List[Product], target_product: Product, visiting_set: Set[Product] = None, valid_dict: Dict[Product, bool] = None) -> bool:

@@ -33,6 +33,7 @@ def main():
         print("Problem is invalid")
         return
     problem.optimize()
+    problem.plot_optimized_graph()
 
 if __name__ == "__main__":
     main()
