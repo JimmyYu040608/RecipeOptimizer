@@ -107,9 +107,14 @@ class ProductionProblem:
 
         solver.Solve()
         
-        # Store optimized recipe counts
+        # Validate that all recipes are of integer scale
+        for var in recipe_vars.values():
+            if not var.solution_value().is_integer():
+                raise ValueError("Non-integer solution value for recipe count")
+        
+        # Store optimized recipe counts in int type
         for recipe in self.recipes:
-            self.opt_recipe_count[recipe.name] = (recipe, recipe_vars[recipe.name].solution_value())
+            self.opt_recipe_count[recipe.name] = (recipe, int(recipe_vars[recipe.name].solution_value()))
         
         # DEBUG
         print("\nSolution:")
@@ -119,8 +124,6 @@ class ProductionProblem:
         for recipe in self.recipes:
             var = recipe_vars[recipe.name]
             if var.solution_value():
-                if not var.solution_value().is_integer():
-                    raise ValueError("Non-integer solution value for recipe count")
                 print(f"{recipe.name}: {var.solution_value()}")
 
         print("\nInputs Remaining:")
@@ -140,16 +143,22 @@ class ProductionProblem:
                 print(f"{p}: {q:.2f}")
     
     
-    def plot_optimized_graph(self):
+    def create_graph(self):
         # Ensure that the problem is optimized
         if not self.opt_recipe_count:
             print("No optimization has been performed yet. Please call optimize() first.")
             return
         
         # Build the production graph topology
-        graph = ProductionGraph()
-        graph.create(self.opt_recipe_count.values(), self.inputs, self.outputs)
-        graph.terminal_display()
+        self.graph.create(self.opt_recipe_count.values(), self.inputs, self.outputs)
+    
+    
+    def print_graph(self):
+        self.graph.terminal_display()
+    
+    
+    def visualize_graph(self, save_path):
+        self.graph.visualize(save_path)
 
 
 def validate_product(recipes: List[Recipe], input_products: List[Product], target_product: Product, visiting_set: Set[Product] = None, valid_dict: Dict[Product, bool] = None) -> bool:

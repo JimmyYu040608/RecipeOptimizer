@@ -1,5 +1,5 @@
-from src.recipe import Product, Recipe, load_recipes
-from src.graph import ProductionGraph
+import os
+from src.recipe import Product, load_recipes
 from src.solver import ProductionProblem
 
 def main():
@@ -27,13 +27,18 @@ def main():
     # Create problem
     problem = ProductionProblem(recipes, inputs, outputs)
         
-    if problem.validate():
-        print("Problem is valid")
-    else:
+    if not problem.validate():
         print("Problem is invalid")
         return
+    
+    # Create output_png folder if it doesn't exist
+    if not os.path.exists('./output_png'):
+        os.makedirs('./output_png')
+    
     problem.optimize()
-    problem.plot_optimized_graph()
+    problem.create_graph()
+    problem.print_graph()
+    problem.visualize_graph('./output_png/production_graph')
 
 if __name__ == "__main__":
     main()
