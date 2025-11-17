@@ -243,7 +243,7 @@ class ProductionGraph:
                     print(f"[{i}] -> [{dst_idx}]: {edge.product} ({edge.provide}/{edge.consume})")
     
     
-    def visualize(self, save_path):
+    def visualize(self, save_path, title):
         """ Visualize the graph with graphviz """
         # Validate that the graph is created
         if not self.vertices:
@@ -251,7 +251,8 @@ class ProductionGraph:
             return
         
         # Create a new directed graph
-        dot = Digraph(comment='Production Graph')
+        dot = Digraph(comment=title)
+        dot.attr(label=title, fontsize='24', labelloc='t', fontname='Helvetica-Bold')
 
         # Add vertices
         for i, vertex in enumerate(self.vertices):
@@ -286,4 +287,4 @@ class ProductionGraph:
         # Render the graph
         dot.render(save_path, format='png', cleanup=True)
         print(f"Graph visualization saved as {save_path}")
-        dot.view()
+        # dot.view()

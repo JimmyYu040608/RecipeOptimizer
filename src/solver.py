@@ -85,7 +85,8 @@ class ProductionProblem:
         # Integer variable bounded from 0 to RECIPE_MAX, with name of the recipes
         recipe_vars = dict([(r.name, solver.IntVar(0, self.get_recipe_max(), r.name)) for r in self.recipes]) # List of recipe counts, if there are 100 available recipes, here creates 100 variables to be optimized
         
-        print("\nNumber of variables: ", solver.NumVariables())
+        # DEBUG
+        # print("\nNumber of variables: ", solver.NumVariables())
         
         # For each product, add a constraint that the total amount is at least 0
         for product in products:
@@ -117,30 +118,25 @@ class ProductionProblem:
             self.opt_recipe_count[recipe.name] = (recipe, int(recipe_vars[recipe.name].solution_value()))
         
         # DEBUG
-        print("\nSolution:")
-        print(f"Objective value: {objective.Value():.2f}")
-
-        print("\nRecipes Used:")
-        for recipe in self.recipes:
-            var = recipe_vars[recipe.name]
-            if var.solution_value():
-                print(f"{recipe.name}: {var.solution_value()}")
-
-        print("\nInputs Remaining:")
-        for p, q in self.inputs.items():
-            for recipe in self.recipes:
-                q += recipe.product_net_rate(p) * recipe_vars[recipe.name].solution_value()
-
-            print(f"{p}: {q:.2f}")
-
-        print("\nProduced:")
-        for p in products:
-            q = 0
-            for recipe in self.recipes:
-                q += recipe.product_net_rate(p) * recipe_vars[recipe.name].solution_value()
-
-            if q > 0.01:
-                print(f"{p}: {q:.2f}")
+        # print("\nSolution:")
+        # print(f"Objective value: {objective.Value():.2f}")
+        # print("\nRecipes Used:")
+        # for recipe in self.recipes:
+        #     var = recipe_vars[recipe.name]
+        #     if var.solution_value():
+        #         print(f"{recipe.name}: {var.solution_value()}")
+        # print("\nInputs Remaining:")
+        # for p, q in self.inputs.items():
+        #     for recipe in self.recipes:
+        #         q += recipe.product_net_rate(p) * recipe_vars[recipe.name].solution_value()
+        #     print(f"{p}: {q:.2f}")
+        # print("\nProduced:")
+        # for p in products:
+        #     q = 0
+        #     for recipe in self.recipes:
+        #         q += recipe.product_net_rate(p) * recipe_vars[recipe.name].solution_value()
+        #     if q > 0.01:
+        #         print(f"{p}: {q:.2f}")
     
     
     def create_graph(self):
@@ -157,8 +153,8 @@ class ProductionProblem:
         self.graph.terminal_display()
     
     
-    def visualize_graph(self, save_path):
-        self.graph.visualize(save_path)
+    def visualize_graph(self, save_path, title):
+        self.graph.visualize(save_path, title)
 
 
 def validate_product(recipes: List[Recipe], input_products: List[Product], target_product: Product, visiting_set: Set[Product] = None, valid_dict: Dict[Product, bool] = None) -> bool:
