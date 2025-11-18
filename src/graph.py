@@ -1,17 +1,8 @@
 from typing import List, Dict, Tuple
-from src.recipe import Product, Recipe
 from graphviz import Digraph
 
-
-def round_float(value: float) -> float:
-    """ Round float to at least 2 decimal places or few """
-    value = round(value, 2)
-    if value == int(value):
-        return int(value)
-    elif round(value, 1) == value:
-        return round(value, 1)
-    else:
-        return value
+from src.common import round_float_to_2
+from src.recipe import Product, Recipe
 
 
 class FlowEdge:
@@ -113,7 +104,7 @@ class ProductionGraph:
         """ Create the production graph from recipes and their scale """
         # Add source vertices
         for product, rate in inputs.items():
-            vertex = SourceVertex(product, round_float(rate))
+            vertex = SourceVertex(product, round_float_to_2(rate))
             self.add_vertex(vertex)
         # Add sink vertices
         for product, score in outputs.items():
@@ -143,23 +134,29 @@ class ProductionGraph:
                 if src_product not in demands:
                     continue
                 # Create a new edge and record it in involved instances
-                edge = FlowEdge(src_product, round_float(demands[src_product]), round_float(demands[src_product])) # TODO: In current implementation, all waste go to WasteVertex, so num/den is no use for showing waste
+                edge = FlowEdge(src_product, round_float_to_2(demands[src_product]), round_float_to_2(demands[src_product])) # TODO: In current implementation, all waste go to WasteVertex, so num/den is no use for showing waste
                 self.add_edge(edge)
                 src_vertex.add_dst(vertex, edge)
                 vertex.add_src(src_vertex, edge)
                 # Update the unused rate
-                unused_rate = round_float(unused_rate - demands[src_product])
+                unused_rate = round_float_to_2(unused_rate - demands[src_product])
                 if unused_rate < 0:
-                    raise ValueError("Unused rate cannot be negative. The optimization program is wrong.")
+                    raise ValueError(f"Unused rate cannot be negative: {src_product}, {unused_rate}. The program is wrong.")
             # Record wasted product with WasteVertex
             if unused_rate > 0:
-                waste_vertex = WasteVertex(src_product, round_float(unused_rate))
+                waste_vertex = WasteVertex(src_product, round_float_to_2(unused_rate))
                 self.add_vertex(waste_vertex)
                 # Create a new edge and record it in involved instances
-                waste_edge = FlowEdge(src_product, round_float(unused_rate), round_float(unused_rate))
+                waste_edge = FlowEdge(src_product, round_float_to_2(unused_rate), round_float_to_2(unused_rate))
                 self.add_edge(waste_edge)
                 src_vertex.add_dst(waste_vertex, waste_edge)
                 waste_vertex.add_src(src_vertex, waste_edge)
+        
+        # Precompute remaining demands for machine-to-machine flows to assign just-enough rate to edge, waste should go to waste node
+        remaining_demands = {}
+        for vertex in self.vertices:
+            if isinstance(vertex, MachineVertex):
+                remaining_demands[vertex] = vertex.in_demands().copy()
         
         # Add product output edges
         for machine_vertex in self.vertices:
@@ -170,26 +167,28 @@ class ProductionGraph:
             available = machine_vertex.out_available()
             unused_products = available.copy()
             # Find the MachineVertex that receives the product
-            for vertex in self.vertices:
-                if not isinstance(vertex, MachineVertex):
-                    continue
-                # Locate each product which this machine needs
-                demands = vertex.in_demands()
-                for product, demand in demands.items():
-                    if product not in available:
+            for product in available:
+                for vertex in self.vertices:
+                    if not isinstance(vertex, MachineVertex) or product not in remaining_demands.get(vertex, {}):
                         continue
-                    # If the machines needs the product, create a new edge and record it in involved instances
-                    edge = FlowEdge(product, round_float(demand), round_float(demand)) # TODO: In current implementation, all waste go to WasteVertex, so num/den is no use for showing waste
+                    remaining_demand = remaining_demands[vertex][product]
+                    if remaining_demand < 0:
+                        raise ValueError(f"Remaining demand cannot be negative: {product}, {remaining_demand}. The program is wrong.")
+                    if remaining_demand == 0:
+                        continue
+                    # Assign the edge with just-enough rate
+                    assign = min(unused_products[product], remaining_demand)
+                    edge = FlowEdge(product, round_float_to_2(assign), round_float_to_2(assign))
                     self.add_edge(edge)
                     machine_vertex.add_dst(vertex, edge)
                     vertex.add_src(machine_vertex, edge)
-                    # Update the unused rate
-                    unused_products[product] = round_float(unused_products[product] - demand)
+                    remaining_demands[vertex][product] -= assign
+                    unused_products[product] -= assign
                     if unused_products[product] < 0:
-                        raise ValueError("Unused rate cannot be negative. The optimization program is wrong.")
+                        raise ValueError(f"Unused rate cannot be negative: {product}, {unused_products[product]}. The program is wrong.")
             # If the product is output product, deliver to target output vertex
             for product, remain in unused_products.items():
-                if product not in outputs:
+                if product not in outputs or remain == 0:
                     continue
                 # Locate the target output vertex
                 for out_vertex in self.vertices:
@@ -198,22 +197,22 @@ class ProductionGraph:
                     if out_vertex.receive_product != product:
                         continue
                     # Create a new edge and record it in involved instances
-                    edge = FlowEdge(product, round_float(remain), round_float(remain))
+                    edge = FlowEdge(product, round_float_to_2(remain), round_float_to_2(remain))
                     self.add_edge(edge)
                     machine_vertex.add_dst(out_vertex, edge)
                     out_vertex.add_src(machine_vertex, edge)
                     # Add the output value to the sink
                     out_vertex.receive_rate += remain
                     # Set unused to 0
-                    unused_products[product] = round_float(0)
+                    unused_products[product] = round_float_to_2(0)
                     break
             # Record wasted product with WasteVertex
             for product, unused_rate in unused_products.items():
                 if unused_rate > 0:
-                    waste_vertex = WasteVertex(product, round_float(unused_rate))
+                    waste_vertex = WasteVertex(product, round_float_to_2(unused_rate))
                     self.add_vertex(waste_vertex)
                     # Create a new edge and record it in involved instances
-                    waste_edge = FlowEdge(product, round_float(unused_rate), round_float(unused_rate))
+                    waste_edge = FlowEdge(product, round_float_to_2(unused_rate), round_float_to_2(unused_rate))
                     self.add_edge(waste_edge)
                     machine_vertex.add_dst(waste_vertex, waste_edge)
                     waste_vertex.add_src(machine_vertex, waste_edge)

@@ -1,8 +1,9 @@
 from ortools.linear_solver import pywraplp
 from typing import List, Dict, Set
 
+from src.common import round_float_to_2
 from src.recipe import Product, Recipe
-from src.graph import ProductionGraph
+from src.graph import ProductionGraph, SinkVertex, WasteVertex
 
 RECIPE_MAX = 100 # Maximum allowable amount of any single recipe
 PRODUCT_MAX = 10000 # Maximum allowable amount of any single product
@@ -18,6 +19,8 @@ class ProductionProblem:
         self._recipe_cost = RECIPE_COST
         self.opt_recipe_count = {} # {"recipe_name": (Recipe, int)}
         self.graph = ProductionGraph()
+        self.result_output_count = {} # {"output_product_name": int}
+        self.result_waste_count = {} # {"wasted_product_name": int}
     
     
     def set_recipe_max(self, value: int):
@@ -53,7 +56,7 @@ class ProductionProblem:
             if not validate_product(self.recipes, self.inputs.keys(), target_product, visiting_set, valid_dict):
                 print(f"No recipe can produce {target_product}. The problem is invalid.")
                 return False
-        print("All output products can be produced from possible recipes. The problem is valid.")
+        # print("All output products can be produced from possible recipes. The problem is valid.")
         return True
     
     
@@ -67,6 +70,10 @@ class ProductionProblem:
         # TODO: Problem: current optimization makes "fulfiling only one output product" always true
         """ Create a production graph optimizing the given recipes for the specified inputs and outputs """
         
+        # Validate the problem
+        if not self.validate():
+            raise ValueError("The problem is invalid")
+        
         # Reduce the problem first by removing irrelevant recipes and inputs
         self.reduce()
         
@@ -78,7 +85,6 @@ class ProductionProblem:
         # GLOP: General linear programming solver
         # SAT: Mixed integer programming solver (decision variables have to be integers)
         solver = pywraplp.Solver.CreateSolver("SAT")
-        infinity = solver.infinity()
         
         # Define decision variable: How can time should each recipe be executed
         # m1, m2, m3... for multiplication of r1, r2, r3...
@@ -137,6 +143,15 @@ class ProductionProblem:
         #         q += recipe.product_net_rate(p) * recipe_vars[recipe.name].solution_value()
         #     if q > 0.01:
         #         print(f"{p}: {q:.2f}")
+        
+        
+    def read_graph(self):
+        """ Retrieve target product counts and waste counts by reading the graph result directly, saving efforts for extra processing in solver """
+        for vertex in self.graph.vertices:
+            if isinstance(vertex, SinkVertex):
+                self.result_output_count[vertex.receive_product.name] = vertex.receive_rate
+            elif isinstance(vertex, WasteVertex):
+                self.result_waste_count[vertex.wasted_product.name] = vertex.wasted_rate
     
     
     def create_graph(self):
@@ -147,6 +162,9 @@ class ProductionProblem:
         
         # Build the production graph topology
         self.graph.create(self.opt_recipe_count.values(), self.inputs, self.outputs)
+        
+        # Read important data back to problem instance for convenience
+        self.read_graph()
     
     
     def print_graph(self):
@@ -154,6 +172,14 @@ class ProductionProblem:
     
     
     def visualize_graph(self, save_path, title):
+        # Sum all the scores contributed by different products
+        total_score = sum(score * self.result_output_count.get(product.name, 0) for product, score in self.outputs.items())
+        total_score = round_float_to_2(total_score)
+        # Sum all the waste counts
+        total_waste = sum(self.result_waste_count.values())
+        total_waste = round_float_to_2(total_waste)
+        # Edit title to display important metrics as well
+        title = f"{title} (Total Score: {total_score}, Wasted: {total_waste} unit/min)"
         self.graph.visualize(save_path, title)
 
 

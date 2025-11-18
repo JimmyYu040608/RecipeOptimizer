@@ -37,10 +37,11 @@ def main():
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
     
+    save_path = f'{OUTPUT_DIR}/production_graph'
     problem.optimize()
     problem.create_graph()
     problem.print_graph()
-    problem.visualize_graph(f'{OUTPUT_DIR}/production_graph', 'Production Graph')
+    problem.visualize_graph(save_path, 'Production Graph')
 
 if __name__ == "__main__":
     main()
