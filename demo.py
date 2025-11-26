@@ -47,30 +47,30 @@ def mini_example_waste(save_path, title):
 def simple_example_waste(save_path, title):
     """ Example of a production problem with ratio adjustment, with waste """
     # Hardcode customized recipes
-    recipe1 = Recipe('Iron Part A', 'Constructor', False)
-    recipe1.add_input(Product('Iron Ore'), 4)
-    recipe1.add_output(Product('Iron Part A'), 1)
-    recipe2 = Recipe('Iron Part B', 'Constructor', False)
-    recipe2.add_input(Product('Iron Ore'), 3)
-    recipe2.add_output(Product('Iron Part B'), 2)
-    recipe3 = Recipe('Special Component', 'Assembler', False)
-    recipe3.add_input(Product('Iron Part A'), 2)
-    recipe3.add_input(Product('Iron Part B'), 2)
-    recipe3.add_output(Product('Special Component'), 1)
+    recipe1 = Recipe('Iron Screw', 'Constructor', True)
+    recipe1.add_input(Product('Iron Ingot'), 1)
+    recipe1.add_output(Product('Screw'), 4)
+    recipe2 = Recipe('Iron Plate', 'Constructor', False)
+    recipe2.add_input(Product('Iron Ingot'), 3)
+    recipe2.add_output(Product('Iron Plate'), 2)
+    recipe3 = Recipe('Reinforced Iron Plate', 'Constructor', False)
+    recipe3.add_input(Product('Iron Plate'), 3)
+    recipe3.add_input(Product('Screw'), 8)
+    recipe3.add_output(Product('Reinforced Iron Plate'), 1)
     recipes = [recipe1, recipe2, recipe3]
     inputs = {
-        Product('Iron Ore'): 60,
+        Product('Iron Ingot'): 120,
     }
     output_scores = {
-        Product('Special Component'): 10,
+        Product('Reinforced Iron Plate'): 1000,
     }
     problem = ProductionProblem(recipes, inputs, output_scores)
     problem.optimize()
     # Intercept to hardcode create wasteful arrangements
     problem.opt_recipe_count = {
-        recipe1.name: (recipe1, 8),
-        recipe2.name: (recipe2, 8),
-        recipe3.name: (recipe3, 4)
+        recipe1.name: (recipe1, 30),
+        recipe2.name: (recipe2, 30),
+        recipe3.name: (recipe3, 15)
     }
     problem.create_graph()
     problem.visualize_graph(save_path, title)
@@ -78,24 +78,24 @@ def simple_example_waste(save_path, title):
 def simple_example_opt(save_path, title):
     """ Example of a production problem with ratio adjustment, with least waste """
     # Hardcode customized recipes
-    recipe1 = Recipe('Iron Part A', 'Constructor', False)
-    recipe1.add_input(Product('Iron Ore'), 4)
-    recipe1.add_output(Product('Iron Part A'), 1)
-    recipe2 = Recipe('Iron Part B', 'Constructor', False)
-    recipe2.add_input(Product('Iron Ore'), 3)
-    recipe2.add_output(Product('Iron Part B'), 2)
-    recipe3 = Recipe('Special Component', 'Assembler', False)
-    recipe3.add_input(Product('Iron Part A'), 2)
-    recipe3.add_input(Product('Iron Part B'), 2)
-    recipe3.add_output(Product('Special Component'), 1)
+    recipe1 = Recipe('Iron Screw', 'Constructor', True)
+    recipe1.add_input(Product('Iron Ingot'), 1)
+    recipe1.add_output(Product('Screw'), 4)
+    recipe2 = Recipe('Iron Plate', 'Constructor', False)
+    recipe2.add_input(Product('Iron Ingot'), 3)
+    recipe2.add_output(Product('Iron Plate'), 2)
+    recipe3 = Recipe('Reinforced Iron Plate', 'Constructor', False)
+    recipe3.add_input(Product('Iron Plate'), 3)
+    recipe3.add_input(Product('Screw'), 8)
+    recipe3.add_output(Product('Reinforced Iron Plate'), 1)
     recipes = [recipe1, recipe2, recipe3]
     inputs = {
-        Product('Iron Ore'): 60,
+        Product('Iron Ingot'): 120,
     }
     output_scores = {
-        Product('Special Component'): 10,
+        Product('Reinforced Iron Plate'): 1000,
     }
-    problem = ProductionProblem(recipes, inputs, output_scores)
+    problem = ProductionProblem(recipes, inputs, output_scores, "waste")
     problem.optimize()
     problem.create_graph()
     problem.visualize_graph(save_path, title)
@@ -141,7 +141,7 @@ def alternate_example_waste(save_path, title):
     problem.create_graph()
     problem.visualize_graph(save_path, title)
 
-def alternate_example_opt(save_path, title):
+def alternate_example_opt(save_path, title, obj_method='produce'):
     # Hardcode customized recipes
     recipe1 = Recipe('Iron Screw', 'Constructor', True)
     recipe1.add_input(Product('Iron Ingot'), 1)

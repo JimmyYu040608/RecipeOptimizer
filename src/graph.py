@@ -1,4 +1,5 @@
 from typing import List, Dict, Tuple
+from collections import deque
 from graphviz import Digraph
 
 from src.common import round_float_to_2
@@ -64,6 +65,12 @@ class MachineVertex(Vertex):
     def out_available(self) -> Dict[Product, float]:
         """ Calcute expected out-flows of this machine according to recipe and scale """
         # Scale up each product rate according to scale
+        d = {}
+        for product, rate in self.recipe.outputs.items():
+            if product in self.recipe.inputs:
+                continue
+            print(f'product: {product.name}, rate: {rate}, scale: {self.scale}')
+            d[product] = rate * self.scale
         return {product: rate * self.scale for product, rate in self.recipe.outputs.items()}
     
     def satisfied(self) -> bool:
@@ -117,105 +124,142 @@ class ProductionGraph:
             vertex = MachineVertex(recipe, scale)
             self.add_vertex(vertex)
 
-        # Add ingredient edges
-        for src_vertex in self.vertices:
-            # Only start connection if this vertex is SourceVertex
-            if not isinstance(src_vertex, SourceVertex):
-                continue
-            # Record the unused rate of product
-            src_product = src_vertex.provide_product
+        # Add ingredient edges from sources to machines with pro-rata allocation if needed
+        for src_vertex in [v for v in self.vertices if isinstance(v, SourceVertex)]:
+            product = src_vertex.provide_product
+            demanding_machines = [v for v in self.vertices if isinstance(v, MachineVertex) and product in v.in_demands()]
+            total_demand = sum(v.in_demands()[product] for v in demanding_machines)
+            alloc_ratio = min(1.0, src_vertex.provide_rate / total_demand) if total_demand > 0 else 1.0
             unused_rate = src_vertex.provide_rate
-            # Find the MachineVertex that receives the product
-            for vertex in self.vertices:
-                if not isinstance(vertex, MachineVertex):
-                    continue
-                # Check if this machine needs the product
-                demands = vertex.in_demands()
-                if src_product not in demands:
-                    continue
-                # Create a new edge and record it in involved instances
-                edge = FlowEdge(src_product, round_float_to_2(demands[src_product]), round_float_to_2(demands[src_product])) # TODO: In current implementation, all waste go to WasteVertex, so num/den is no use for showing waste
+            for vertex in demanding_machines:
+                demand = vertex.in_demands()[product]
+                assign = round_float_to_2(demand * alloc_ratio)
+                edge = FlowEdge(product, assign, round_float_to_2(demand))
                 self.add_edge(edge)
                 src_vertex.add_dst(vertex, edge)
                 vertex.add_src(src_vertex, edge)
-                # Update the unused rate
-                unused_rate = round_float_to_2(unused_rate - demands[src_product])
-                if unused_rate < 0:
-                    raise ValueError(f"Unused rate cannot be negative: {src_product}, {unused_rate}. The program is wrong.")
+                unused_rate -= assign
             # Record wasted product with WasteVertex
             if unused_rate > 0:
-                waste_vertex = WasteVertex(src_product, round_float_to_2(unused_rate))
+                waste_vertex = WasteVertex(product, round_float_to_2(unused_rate))
                 self.add_vertex(waste_vertex)
-                # Create a new edge and record it in involved instances
-                waste_edge = FlowEdge(src_product, round_float_to_2(unused_rate), round_float_to_2(unused_rate))
+                waste_edge = FlowEdge(product, round_float_to_2(unused_rate), round_float_to_2(unused_rate))
                 self.add_edge(waste_edge)
                 src_vertex.add_dst(waste_vertex, waste_edge)
                 waste_vertex.add_src(src_vertex, waste_edge)
-        
-        # Precompute remaining demands for machine-to-machine flows to assign just-enough rate to edge, waste should go to waste node
-        remaining_demands = {}
-        for vertex in self.vertices:
-            if isinstance(vertex, MachineVertex):
-                remaining_demands[vertex] = vertex.in_demands().copy()
-        
-        # Add product output edges
-        for machine_vertex in self.vertices:
-            # Only start connection if this vertex is MachineVertex
-            if not isinstance(machine_vertex, MachineVertex):
-                continue
-            # Record the unused rate of product
-            available = machine_vertex.out_available()
-            unused_products = available.copy()
-            # Find the MachineVertex that receives the product
-            for product in available:
-                for vertex in self.vertices:
-                    if not isinstance(vertex, MachineVertex) or product not in remaining_demands.get(vertex, {}):
-                        continue
-                    remaining_demand = remaining_demands[vertex][product]
-                    if remaining_demand < 0:
-                        raise ValueError(f"Remaining demand cannot be negative: {product}, {remaining_demand}. The program is wrong.")
-                    if remaining_demand == 0:
-                        continue
-                    # Assign the edge with just-enough rate
-                    assign = min(unused_products[product], remaining_demand)
-                    edge = FlowEdge(product, round_float_to_2(assign), round_float_to_2(assign))
+
+        # Precompute producers for each product
+        producers: Dict[Product, List[MachineVertex]] = {}
+        for vertex in [v for v in self.vertices if isinstance(v, MachineVertex)]:
+            for product, rate in vertex.recipe.outputs.items():
+                if product not in producers:
+                    producers[product] = []
+                producers[product].append(vertex)
+
+        # Compute indegree for topological sort (number of upstream machine groups for intermediate inputs)
+        indegree: Dict[MachineVertex, int] = {}
+        for vertex in [v for v in self.vertices if isinstance(v, MachineVertex)]:
+            upstream = set()
+            for product in vertex.recipe.inputs.keys():
+                if product in inputs:
+                    continue  # raw input, handled by sources
+                if product in producers:
+                    upstream.update(producers[product])
+            indegree[vertex] = len(upstream)
+
+        # Queue for topological processing
+        queue = deque([v for v in self.vertices if isinstance(v, MachineVertex) and indegree.get(v, 0) == 0])
+
+        # Precompute remaining demands
+        remaining_demands = {v: v.in_demands().copy() for v in self.vertices if isinstance(v, MachineVertex)}
+
+        while queue:
+            current = queue.popleft()
+
+            # Compute provided for each input product
+            provided_dict: Dict[Product, float] = {}
+            for src_vertex, flow in current.src.items():
+                if flow.product not in provided_dict:
+                    provided_dict[flow.product] = 0.0
+                provided_dict[flow.product] += flow.provide
+
+            # Compute min_ratio
+            demands = current.in_demands()
+            ratios = []
+            for p, d in demands.items():
+                prov = provided_dict.get(p, 0.0)
+                ratios.append(prov / d if d > 0 else 1.0)
+            min_ratio = min(ratios) if ratios else 1.0
+
+            # Adjust input flows for excess (overprovided non-limiting inputs)
+            for p, d in demands.items():
+                effective_consume = round_float_to_2(d * min_ratio)
+                total_provided = provided_dict.get(p, 0.0)
+                if total_provided > effective_consume + 1e-6:  # tolerance for float
+                    for src_vertex, flow in current.src.items():
+                        if flow.product != p:
+                            continue
+                        share = round_float_to_2((flow.provide / total_provided) * effective_consume if total_provided > 0 else 0.0)
+                        excess = round_float_to_2(flow.provide - share)
+                        flow.provide = share
+                        if excess > 0:
+                            waste_vertex = WasteVertex(p, excess)
+                            self.add_vertex(waste_vertex)
+                            waste_edge = FlowEdge(p, excess, excess)
+                            self.add_edge(waste_edge)
+                            src_vertex.add_dst(waste_vertex, waste_edge)
+                            waste_vertex.add_src(src_vertex, waste_edge)
+
+            # Compute effective out_available
+            effective_scale = round_float_to_2(current.scale * min_ratio)
+            out_available = {product: round_float_to_2(rate * effective_scale) for product, rate in current.recipe.outputs.items() if product not in current.recipe.inputs}
+
+            unused_products = out_available.copy()
+
+            # Assign outputs
+            for product, available in out_available.items():
+                # Assign to machines with pro-rata if overdemanded
+                demanding_machines = [v for v in self.vertices if isinstance(v, MachineVertex) and product in remaining_demands.get(v, {}) and remaining_demands[v][product] > 0]
+                total_rem_demand = sum(remaining_demands[v][product] for v in demanding_machines)
+                alloc_ratio = min(1.0, available / total_rem_demand) if total_rem_demand > 0 else 1.0
+                for vertex in demanding_machines:
+                    rem = remaining_demands[vertex][product]
+                    assign = round_float_to_2(rem * alloc_ratio)
+                    edge = FlowEdge(product, assign, round_float_to_2(rem))
                     self.add_edge(edge)
-                    machine_vertex.add_dst(vertex, edge)
-                    vertex.add_src(machine_vertex, edge)
+                    current.add_dst(vertex, edge)
+                    vertex.add_src(current, edge)
                     remaining_demands[vertex][product] -= assign
                     unused_products[product] -= assign
-                    if unused_products[product] < 0:
-                        raise ValueError(f"Unused rate cannot be negative: {product}, {unused_products[product]}. The program is wrong.")
-            # If the product is output product, deliver to target output vertex
-            for product, remain in unused_products.items():
-                if product not in outputs or remain == 0:
-                    continue
-                # Locate the target output vertex
-                for out_vertex in self.vertices:
-                    if not isinstance(out_vertex, SinkVertex):
-                        continue
-                    if out_vertex.receive_product != product:
-                        continue
-                    # Create a new edge and record it in involved instances
-                    edge = FlowEdge(product, round_float_to_2(remain), round_float_to_2(remain))
-                    self.add_edge(edge)
-                    machine_vertex.add_dst(out_vertex, edge)
-                    out_vertex.add_src(machine_vertex, edge)
-                    # Add the output value to the sink
-                    out_vertex.receive_rate += remain
-                    # Set unused to 0
-                    unused_products[product] = round_float_to_2(0)
-                    break
-            # Record wasted product with WasteVertex
+
+                # Assign to sink if output product and remaining
+                remain = unused_products[product]
+                if product in outputs and remain > 0:
+                    for out_vertex in [v for v in self.vertices if isinstance(v, SinkVertex) and v.receive_product == product]:
+                        edge = FlowEdge(product, remain, remain)
+                        self.add_edge(edge)
+                        current.add_dst(out_vertex, edge)
+                        out_vertex.add_src(current, edge)
+                        out_vertex.receive_rate += remain
+                        unused_products[product] = 0
+                        break
+
+            # Record wasted products
             for product, unused_rate in unused_products.items():
                 if unused_rate > 0:
                     waste_vertex = WasteVertex(product, round_float_to_2(unused_rate))
                     self.add_vertex(waste_vertex)
-                    # Create a new edge and record it in involved instances
                     waste_edge = FlowEdge(product, round_float_to_2(unused_rate), round_float_to_2(unused_rate))
                     self.add_edge(waste_edge)
-                    machine_vertex.add_dst(waste_vertex, waste_edge)
-                    waste_vertex.add_src(machine_vertex, waste_edge)
+                    current.add_dst(waste_vertex, waste_edge)
+                    waste_vertex.add_src(current, waste_edge)
+
+            # Decrease indegree for unique downstream machines
+            unique_dsts = set(dst for dst in current.dst.keys() if isinstance(dst, MachineVertex))
+            for dst in unique_dsts:
+                indegree[dst] -= 1
+                if indegree[dst] == 0:
+                    queue.append(dst)
     
     
     def terminal_display(self):
@@ -256,11 +300,11 @@ class ProductionGraph:
         # Add vertices
         for i, vertex in enumerate(self.vertices):
             if isinstance(vertex, SourceVertex):
-                dot.node(str(i), f"{vertex.provide_product} (Rate: {vertex.provide_rate})", color='blue')
+                dot.node(str(i), f"{vertex.provide_product} (Supplied: {vertex.provide_rate})", color='blue')
             elif isinstance(vertex, SinkVertex):
-                dot.node(str(i), f"{vertex.receive_product} (Rate: {vertex.receive_rate})", color='green')
+                dot.node(str(i), f"{vertex.receive_product} (Received: {vertex.receive_rate})", color='green')
             elif isinstance(vertex, MachineVertex):
-                dot.node(str(i), f"{vertex.recipe} (Scale: {vertex.scale})")
+                dot.node(str(i), f"{vertex.recipe} (Scale: {vertex.scale})", shape="box")
             elif isinstance(vertex, WasteVertex):
                 dot.node(str(i), f"{vertex.wasted_product} (Wasted: {vertex.wasted_rate})", color='red')
 
