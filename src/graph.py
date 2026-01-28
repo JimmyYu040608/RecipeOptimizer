@@ -141,7 +141,7 @@ class ProductionGraph:
             machine_inputs[vertex] = {p: rate * vertex.scale for p, rate in vertex.recipe.inputs.items()}
             machine_outputs[vertex] = {p: rate * vertex.scale for p, rate in vertex.recipe.outputs.items() if p not in vertex.recipe.inputs}
 
-        # Global product ledger
+        # Global product record
         total_produced: Dict[Product, float] = {}
         total_consumed: Dict[Product, float] = {}
         
@@ -235,7 +235,7 @@ class ProductionGraph:
                         sink.add_src(producer, edge)
                         sink.receive_rate += remaining
 
-        # Step 4: Waste any remaining products
+        # Step 4: Throw remaining products into waste
         for producer in machine_vertices:
             for product, amount in machine_outputs[producer].items():
                 already_allocated = sum(edge.provide for edge in producer.dst.values() if edge.product == product)

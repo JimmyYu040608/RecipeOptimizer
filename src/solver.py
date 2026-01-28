@@ -207,25 +207,25 @@ class ProductionProblem:
             self.opt_recipe_count[recipe.name] = (recipe, int(self.recipe_vars[recipe.name].solution_value()))
         
         # DEBUG
-        print("\nSolution:")
-        print(f"Objective value: {self.objective.Value():.2f}")
-        print("\nRecipes Used:")
-        for recipe in self.recipes:
-            var = self.recipe_vars[recipe.name]
-            if var.solution_value():
-                print(f"{recipe.name}: {var.solution_value()}")
-        print("\nInputs Remaining:")
-        for p, q in self.inputs.items():
-            for recipe in self.recipes:
-                q += recipe.product_net_rate(p) * self.recipe_vars[recipe.name].solution_value()
-            print(f"{p}: {q:.2f}")
-        print("\nProduced:")
-        for p in products:
-            q = 0
-            for recipe in self.recipes:
-                q += recipe.product_net_rate(p) * self.recipe_vars[recipe.name].solution_value()
-            if q > 0.01:
-                print(f"{p}: {q:.2f}")
+        # print("\nSolution:")
+        # print(f"Objective value: {self.objective.Value():.2f}")
+        # print("\nRecipes Used:")
+        # for recipe in self.recipes:
+        #     var = self.recipe_vars[recipe.name]
+        #     if var.solution_value():
+        #         print(f"{recipe.name}: {var.solution_value()}")
+        # print("\nInputs Remaining:")
+        # for p, q in self.inputs.items():
+        #     for recipe in self.recipes:
+        #         q += recipe.product_net_rate(p) * self.recipe_vars[recipe.name].solution_value()
+        #     print(f"{p}: {q:.2f}")
+        # print("\nProduced:")
+        # for p in products:
+        #     q = 0
+        #     for recipe in self.recipes:
+        #         q += recipe.product_net_rate(p) * self.recipe_vars[recipe.name].solution_value()
+        #     if q > 0.01:
+        #         print(f"{p}: {q:.2f}")
         
         
     def read_graph(self):

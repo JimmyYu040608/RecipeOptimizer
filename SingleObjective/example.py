@@ -1,8 +1,7 @@
 from src.recipe import Product, Recipe
-from src.graph import ProductionGraph
 from src.solver import ProductionProblem
 
-OUTPUT_DIR = './output_png'
+OUTPUT_DIR = './demo_png'
 
 def mini_example_opt(save_path, title):
     """ Example of a production problem with a single recipe """
