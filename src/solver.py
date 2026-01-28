@@ -1,7 +1,7 @@
 from ortools.linear_solver import pywraplp
 from typing import List, Dict, Set
 
-from src.common import round_float_to_2
+from src.common import custom_round_float
 from src.recipe import Product, Recipe
 from src.graph import ProductionGraph, SinkVertex, WasteVertex
 
@@ -207,25 +207,25 @@ class ProductionProblem:
             self.opt_recipe_count[recipe.name] = (recipe, int(self.recipe_vars[recipe.name].solution_value()))
         
         # DEBUG
-        # print("\nSolution:")
-        # print(f"Objective value: {self.objective.Value():.2f}")
-        # print("\nRecipes Used:")
-        # for recipe in self.recipes:
-        #     var = self.recipe_vars[recipe.name]
-        #     if var.solution_value():
-        #         print(f"{recipe.name}: {var.solution_value()}")
-        # print("\nInputs Remaining:")
-        # for p, q in self.inputs.items():
-        #     for recipe in self.recipes:
-        #         q += recipe.product_net_rate(p) * self.recipe_vars[recipe.name].solution_value()
-        #     print(f"{p}: {q:.2f}")
-        # print("\nProduced:")
-        # for p in products:
-        #     q = 0
-        #     for recipe in self.recipes:
-        #         q += recipe.product_net_rate(p) * self.recipe_vars[recipe.name].solution_value()
-        #     if q > 0.01:
-        #         print(f"{p}: {q:.2f}")
+        print("\nSolution:")
+        print(f"Objective value: {self.objective.Value():.2f}")
+        print("\nRecipes Used:")
+        for recipe in self.recipes:
+            var = self.recipe_vars[recipe.name]
+            if var.solution_value():
+                print(f"{recipe.name}: {var.solution_value()}")
+        print("\nInputs Remaining:")
+        for p, q in self.inputs.items():
+            for recipe in self.recipes:
+                q += recipe.product_net_rate(p) * self.recipe_vars[recipe.name].solution_value()
+            print(f"{p}: {q:.2f}")
+        print("\nProduced:")
+        for p in products:
+            q = 0
+            for recipe in self.recipes:
+                q += recipe.product_net_rate(p) * self.recipe_vars[recipe.name].solution_value()
+            if q > 0.01:
+                print(f"{p}: {q:.2f}")
         
         
     def read_graph(self):
@@ -257,10 +257,10 @@ class ProductionProblem:
     def visualize_graph(self, save_path, title):
         # Sum all the scores contributed by different products
         total_score = sum(score * self.result_output_count.get(product.name, 0) for product, score in self.outputs.items())
-        total_score = round_float_to_2(total_score)
+        total_score = custom_round_float(total_score)
         # Sum all the waste counts
         total_waste = sum(self.result_waste_count.values())
-        total_waste = round_float_to_2(total_waste)
+        total_waste = custom_round_float(total_waste)
         # Edit title to display important metrics as well
         title = f"{title} (Product Value: {total_score}, Wasted: {total_waste} unit/min)"
         self.graph.visualize(save_path, title)

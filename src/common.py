@@ -1,5 +1,5 @@
-def round_float_to_2(value: float) -> float:
-    """ Round float to at least 2 decimal places or few """
+def custom_round_float(value: float) -> float:
+    """ Round float to at least 2 decimal places or fewer decimal places if possible """
     value = round(value, 2)
     if value == int(value):
         return int(value)
