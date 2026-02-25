@@ -2,34 +2,33 @@ import os
 from src.recipe import Product, load_recipes
 from src.solver import ProductionProblem
 
-OUTPUT_DIR = "./output_png"
+OUTPUT_DIR = "./images/soo"
 
 def main():
     # Load from data.json for all possible recipes, items, etc in Satisfactory
     recipes = load_recipes()
 
-    with open('output.txt', 'w', encoding='utf-8') as f:
-        for recipe in recipes:
-            f.write(recipe.description() + '\n\n')
+    # with open('output.txt', 'w', encoding='utf-8') as f:
+    #     for recipe in recipes:
+    #         f.write(recipe.description() + '\n\n')
 
     # What is provided to the solver for optimization
     inputs = { # Product: provided rate
-        "Crude Oil": 300,
-        "Water": 800,
-        "Coal": 533.33,
-        "Sulfur": 533.33
+        "Iron Ore": 1000,
+        "Copper Ore": 800,
+        "Coal": 900,
+        "Crude Oil": 500
     }
     inputs = {Product(k): v for k, v in inputs.items()}
     output_scores = { # {Product: score}
-        "Fuel": 600,
-        "Turbofuel": 2000
+        "Modular Engine": 1000
     }
     output_scores = {Product(k): v for k, v in output_scores.items()}
 
     # Create problem
     problem_produce = ProductionProblem(recipes, inputs, output_scores)
     problem_waste = ProductionProblem(recipes, inputs, output_scores, 'waste')
-    problem_PnW = ProductionProblem(recipes, inputs, output_scores, 'produce_and_waste')
+    problem_PnW = ProductionProblem(recipes, inputs, output_scores, 'value_waste')
         
     if not problem_produce.validate():
         print("Problem (Produce) is invalid")
@@ -46,23 +45,23 @@ def main():
         os.makedirs(OUTPUT_DIR)
     
     # Heuristics of maximizing target production
-    save_path = f'{OUTPUT_DIR}/production_graph_produce'
+    save_path = f'{OUTPUT_DIR}/extraordinary_graph_produce'
     problem_produce.optimize()
     problem_produce.create_graph()
     problem_produce.print_graph()
-    problem_produce.visualize_graph(save_path, 'Production Graph (Maximize Production)')
+    problem_produce.visualize_graph(save_path, 'Extraordinary Graph (Maximize Production)')
     # Heuristics of minimizing waste
-    save_path = f'{OUTPUT_DIR}/production_graph_waste'
+    save_path = f'{OUTPUT_DIR}/extraordinary_graph_waste'
     problem_waste.optimize()
     problem_waste.create_graph()
     problem_waste.print_graph()
-    problem_waste.visualize_graph(save_path, 'Production Graph (Minimize Waste)')
+    problem_waste.visualize_graph(save_path, 'Extraordinary Graph (Minimize Waste)')
     # Heuristics of maximizing target production with penalty of waste
-    save_path = f'{OUTPUT_DIR}/production_graph_produce_and_waste'
+    save_path = f'{OUTPUT_DIR}/extraordinary_graph_produce_and_waste'
     problem_PnW.optimize()
     problem_PnW.create_graph()
     problem_PnW.print_graph()
-    problem_PnW.visualize_graph(save_path, 'Production Graph (Production Penalized with Waste)')
+    problem_PnW.visualize_graph(save_path, 'Extraordinary Graph (Production Penalized with Waste)')
 
 if __name__ == "__main__":
     main()

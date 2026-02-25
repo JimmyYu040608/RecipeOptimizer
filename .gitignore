@@ -1,7 +1,4 @@
 output.txt
 __pycache__/
 networkx_example.ipynb
-output_png
-draw_png
-demo_png
-moo_png
+images/

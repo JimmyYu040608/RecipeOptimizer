@@ -1,7 +1,8 @@
+import numpy as np
 from ortools.linear_solver import pywraplp
 from typing import List, Dict, Set
 
-from src.common import custom_round_float
+from src.common import custom_round_float, integer_simplex
 from src.recipe import Product, Recipe
 from src.graph import ProductionGraph, SinkVertex, WasteVertex
 
@@ -10,7 +11,7 @@ PRODUCT_MAX = 10000 # Maximum allowable amount of any single product
 RECIPE_COST = 0.01 # Small cost to discourage extraneous recipes
 
 class ProductionProblem:
-    def __init__(self, recipes: List[Recipe], inputs: Dict[Product, float], outputs: Dict[Product, float], obj_method="produce"):
+    def __init__(self, recipes: List[Recipe], inputs: Dict[Product, float], outputs: Dict[Product, float], obj_method="value"):
         # Initialize input variables
         self.recipes = recipes
         self.inputs = inputs # {product: given_rate}
@@ -107,101 +108,16 @@ class ProductionProblem:
         self.inputs = {p: rate for p, rate in self.inputs.items() if p in needed_products}
     
     
-    """ Three objective functions for test """
-    def _obj_produce(self):
-        """ Objective function method 1: Maximize total scores given by target products """
-        self.objective = self.solver.Objective()
-        for recipe in self.recipes:
-            # Calculate score contribution (sum of the all target production rate * its score)
-            recipe_contribution = sum([recipe.product_net_rate(c) * s for c, s in self.outputs.items()])
-            recipe_contribution -= self.get_recipe_cost()
-            # Penalize alternate recipes slightly to prioritize original recipes for simplicity
-            if recipe.alternate:
-                recipe_contribution -= 0.001
-            self.objective.SetCoefficient(self.recipe_vars[recipe.name], recipe_contribution)
-        self.objective.SetMaximization()
-        
-    
-    def _obj_waste(self):
-        """ Objective function method 2: Minimize total waste """
-        self.objective = self.solver.Objective()
-        for recipe in self.recipes:
-            # Calculate waste contribution (positive production for non-target products)
-            waste_contribution = sum([recipe.product_net_rate(product) for product in recipe.products_used() if product not in self.outputs])
-            # Penalize alternate recipes slightly to prioritize original recipes for simplicity
-            if recipe.alternate:
-                waste_contribution += 0.001
-            self.objective.SetCoefficient(self.recipe_vars[recipe.name], waste_contribution)
-        self.objective.SetMinimization()  # Minimize waste directly
-    
-    
-    def _obj_produce_and_waste(self):
-        """ Objective function method 3: Maximize total scores given by target products with a penalty of waste """
-        self.objective = self.solver.Objective()
-        waste_penalty = 10  # Penalty weight for waste
-        for recipe in self.recipes:
-            # Production contribution (same as _obj_produce)
-            recipe_contribution = sum([recipe.product_net_rate(c) * s for c, s in self.outputs.items()])
-            recipe_contribution -= self.get_recipe_cost()
-            # Waste penalty
-            waste_contribution = sum([recipe.product_net_rate(product) for product in recipe.products_used() if product not in self.outputs and product not in self.inputs])
-            recipe_contribution -= waste_penalty * waste_contribution
-            # Penalize alternate recipes slightly to prioritize original recipes for simplicity
-            if recipe.alternate:
-                recipe_contribution -= 0.001
-            self.objective.SetCoefficient(self.recipe_vars[recipe.name], recipe_contribution)
-        self.objective.SetMaximization()
-    
-    
-    def optimize(self):
-        # TODO: Problem: current optimization makes "fulfiling only one output product" always true
-        """ Create a production graph optimizing the given recipes for the specified inputs and outputs """
-        
-        # Validate the problem
-        if not self.validate():
-            raise ValueError("The problem is invalid")
-        
-        # Reduce the problem first by removing irrelevant recipes and inputs
-        self.reduce()
-        
-        # Flatten recipes to obtain all produces involved
-        products = list(set([c for recipe in self.recipes for c in recipe.products_used()]))
-        products.sort()
-        
-        # Define decision variable: How can time should each recipe be executed
-        # m1, m2, m3... for multiplication of r1, r2, r3...
-        # Integer variable bounded from 0 to RECIPE_MAX, with name of the recipes
-        self.recipe_vars = dict([(r.name, self.solver.IntVar(0, self.get_recipe_max(), r.name)) for r in self.recipes]) # List of recipe counts, if there are 100 available recipes, here creates 100 variables to be optimized
-        
-        # DEBUG
-        # print("\nNumber of variables: ", self.solver.NumVariables())
-        
-        # For each product, add a constraint that the total amount is at least 0
-        for product in products:
-            min_value = -self.inputs[product] if product in self.inputs else 0
-            ct = self.solver.RowConstraint(min_value, self.get_product_max(), product.name)
-
-            # Add the contribution of each recipe
-            for recipe in self.recipes:
-                ct.SetCoefficient(self.recipe_vars[recipe.name], recipe.product_net_rate(product))
-                
-        # Create objective function
-        if self.obj_method == "produce":
-            self._obj_produce()
-        elif self.obj_method == "waste":
-            self._obj_waste()
-        elif self.obj_method == "produce_and_waste":
-            self._obj_produce_and_waste()
-        else:
-            raise ValueError(f"Invalid objective method: {self.obj_method}")
-
+    def _single_obj_solve(self):
+        """
+        Handler function for all single objective functions to solve the problem and store parameters after prior objective and constraints setup
+        To be used following _set_obj_XXX functions
+        """
         self.solver.Solve()
-        
         # Validate that all recipes are of integer scale
         for var in self.recipe_vars.values():
             if not var.solution_value().is_integer():
                 raise ValueError("Non-integer solution value for recipe count")
-        
         # Store optimized recipe counts in int type
         for recipe in self.recipes:
             self.opt_recipe_count[recipe.name] = (recipe, int(self.recipe_vars[recipe.name].solution_value()))
@@ -226,6 +142,185 @@ class ProductionProblem:
         #         q += recipe.product_net_rate(p) * self.recipe_vars[recipe.name].solution_value()
         #     if q > 0.01:
         #         print(f"{p}: {q:.2f}")
+    
+    
+    # def _multi_obj_solve(self, contribution_list, resolution):
+    #     # Apply integer simplex technique to generate samples where w1+w2+...+wn = 1
+    #     dimension = len(contribution_list)
+    #     integer_points = integer_simplex(dimension, resolution)
+    #     weights = np.array(integer_points) / resolution
+    #     # Try out all pareto_solutions
+    #     pareto_solutions = []
+    #     for w in weights:
+    #         # contribution_list is assumed to be processed independently for each objective (e.g. whether to negate it for minimization)
+    #         weighted_contribution = sum(w[i] * contribution_list[i] for i in range(dimension))
+    
+    
+    """ Three single objective functions for test """
+    def _set_obj_produce(self):
+        """ Objective 1: Maximize total scores given by target products """
+        self.objective = self.solver.Objective()
+        for recipe in self.recipes:
+            # Calculate score contribution (sum of the all target production rate * its score)
+            recipe_contribution = sum([recipe.product_net_rate(c) * s for c, s in self.outputs.items()])
+            recipe_contribution -= self.get_recipe_cost()
+            # Penalize alternate recipes slightly to prioritize original recipes for simplicity
+            if recipe.alternate:
+                recipe_contribution -= 0.001
+            recipe_contribution = -recipe_contribution # To be turned into minimization problem
+            self.objective.SetCoefficient(self.recipe_vars[recipe.name], recipe_contribution)
+        self.objective.SetMinimization()
+        
+    
+    def _set_obj_waste(self):
+        """ Objective 2: Minimize total waste """
+        self.objective = self.solver.Objective()
+        for recipe in self.recipes:
+            # Calculate waste contribution (positive net production of non-target products)
+            waste_contribution = sum([recipe.product_net_rate(product) for product in recipe.products_used() if product not in self.outputs])
+            # Penalize alternate recipes slightly to prioritize original recipes for simplicity
+            if recipe.alternate:
+                waste_contribution += 0.001
+            self.objective.SetCoefficient(self.recipe_vars[recipe.name], waste_contribution)
+        self.objective.SetMinimization()  # Minimize waste directly
+    
+    
+    def _set_obj_produce_and_waste(self):
+        """ Objective 3 (flawed): Maximize total scores given by target products with a penalty of waste """
+        self.objective = self.solver.Objective()
+        waste_penalty = 10  # Penalty weight for waste <-- quite arbitrary
+        for recipe in self.recipes:
+            # Production contribution (same as _set_obj_produce)
+            recipe_contribution = sum([recipe.product_net_rate(c) * s for c, s in self.outputs.items()])
+            recipe_contribution -= self.get_recipe_cost()
+            # Waste penalty
+            waste_contribution = sum([recipe.product_net_rate(product) for product in recipe.products_used() if product not in self.outputs and product not in self.inputs])
+            recipe_contribution -= waste_penalty * waste_contribution
+            # Penalize alternate recipes slightly to prioritize original recipes for simplicity
+            if recipe.alternate:
+                recipe_contribution -= 0.001
+            recipe_contribution = -recipe_contribution # To be turned into minimization problem
+            self.objective.SetCoefficient(self.recipe_vars[recipe.name], recipe_contribution)
+        self.objective.SetMinimization()
+    
+    
+    def _multi_obj_value_waste(self):
+        """ Multi-objective: maximize production score and minimize waste simultaneously """
+        
+        from src.weight_estimate import normalize, ws_value_waste_norm_param
+        
+        pareto_solutions = []
+        weights = np.linspace(0, 1, 21)  # 21 weight combinations
+        
+        # Obtain normalization parameters for this problem
+        problem_obj = {'recipes': self.recipes, 'inputs': self.inputs, 'outputs': self.outputs}
+        f1_best, f1_worst, f2_best, f2_worst = ws_value_waste_norm_param(problem_obj)
+        
+        # DEBUG
+        print("DEBUG: Normalize test:")
+        f1_values = [27000, 0.1, 6000, 19999]
+        f2_values = [0, 100, 500, f2_worst]
+        for i in range(4):
+            print(f"f1: {f1_values[i]}, normalized: {normalize(f1_values[i], f1_best, f1_worst)}")
+            print(f"f2: {f2_values[i]}, normalized: {normalize(f2_values[i], f2_best, f2_worst)}")
+        
+        # Iterate through different combinations of weights
+        for w1 in weights:
+            w2 = 1 - w1
+            
+            # Create weighted objective
+            self.objective = self.solver.Objective()
+            for recipe in self.recipes:
+                # Calculate score contribution (sum of the all target production rate * its score)
+                recipe_contribution = sum([recipe.product_net_rate(c) * s for c, s in self.outputs.items()])
+                recipe_contribution -= self.get_recipe_cost()
+                recipe_contribution = -recipe_contribution # To be turned into minimization problem
+                recipe_contribution = normalize(recipe_contribution, f1_best, f1_worst)
+                # Calculate waste contribution (positive production for non-target products)
+                waste_contribution = sum([recipe.product_net_rate(product) for product in recipe.products_used() if product not in self.outputs])
+                waste_contribution = normalize(waste_contribution, f2_best, f2_worst)
+                # Weighted combination (maximize value, minimize waste)
+                weighted_contribution = w1 * recipe_contribution + w2 * waste_contribution
+                # Penalize alternate recipes slightly to prioritize original recipes for simplicity
+                if recipe.alternate:
+                    weighted_contribution -= 0.001
+                self.objective.SetCoefficient(self.recipe_vars[recipe.name], weighted_contribution)
+            self.objective.SetMinimization()
+            # Different from single objective, solve for now to locate different weight combinations
+            self.solver.Solve()
+            
+            # Calculate objective values
+            total_value = sum(self.recipe_vars[recipe.name].solution_value() * sum([recipe.product_net_rate(c) * s for c, s in self.outputs.items()]) for recipe in self.recipes)
+            
+            # Store current solution for graph creation
+            current_solution = {recipe.name: self.recipe_vars[recipe.name].solution_value() for recipe in self.recipes}
+            
+            # Create temporary graph to calculate actual waste
+            temp_graph = ProductionGraph()
+            temp_graph.create([(recipe, int(current_solution[recipe.name])) for recipe in self.recipes], self.inputs, self.outputs)
+            
+            # Calculate total waste from WasteVertex objects
+            total_waste = sum(vertex.wasted_rate for vertex in temp_graph.vertices if isinstance(vertex, WasteVertex))
+            
+            pareto_solutions.append((total_value, total_waste, w1, w2, current_solution))
+        
+        print("Pareto Front Solutions (Value, Waste, w_production, w_waste):")
+        for solution in pareto_solutions:
+            print(f"Value: {solution[0]:.2f}, Waste: {solution[1]:.2f}, w1: {solution[2]:.2f}, w2: {solution[3]:.2f}")
+        
+        return pareto_solutions
+    
+    
+    def optimize(self):
+        # TODO: Problem: current optimization makes "fulfiling only one output product" always true
+        """ Create a production graph optimizing the given recipes for the specified inputs and outputs """
+        
+        # Validate the problem
+        if not self.validate():
+            raise ValueError("The problem is invalid")
+        
+        # Reduce the problem first by removing irrelevant recipes and inputs
+        self.reduce()
+        
+        # Flatten recipes to obtain all produces involved
+        products = list(set([c for recipe in self.recipes for c in recipe.products_used()]))
+        products.sort()
+        
+        # Define decision variable: How can time should each recipe be executed
+        # m1, m2, m3... for multiplication of r1, r2, r3...
+        # Integer variable bounded from 0 to RECIPE_MAX, with name of the recipes
+        # List of recipe counts, if there are 100 available recipes, here creates 100 variables to be optimized
+        self.recipe_vars = dict([(r.name, self.solver.IntVar(0, self.get_recipe_max(), r.name)) for r in self.recipes]) # {str: IntVar}
+        
+        # DEBUG
+        # print("\nNumber of variables: ", self.solver.NumVariables())
+        
+        # For each product, add a constraint that the total amount is at least 0
+        for product in products:
+            min_value = -self.inputs[product] if product in self.inputs else 0
+            ct = self.solver.RowConstraint(min_value, self.get_product_max(), product.name)
+
+            # Add the contribution of each recipe
+            for recipe in self.recipes:
+                ct.SetCoefficient(self.recipe_vars[recipe.name], recipe.product_net_rate(product))
+                
+        # Create objective function
+        if self.obj_method == "value":
+            self._set_obj_produce()
+            self._single_obj_solve()
+        elif self.obj_method == "waste":
+            self._set_obj_waste()
+            self._single_obj_solve()
+        elif self.obj_method == "value_waste":
+            self._set_obj_produce_and_waste()
+            self._single_obj_solve()
+        elif self.obj_method == "multi_obj_value_waste":
+            pareto_sol = self._multi_obj_value_waste()
+            example_sol = pareto_sol[1] # Hardcode for now
+            self.opt_recipe_count = {recipe.name: (recipe, int(example_sol[4][recipe.name])) for recipe in self.recipes}
+            
+        else:
+            raise ValueError(f"Invalid objective method: {self.obj_method}")
         
         
     def read_graph(self):

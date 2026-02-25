@@ -1,14 +1,7 @@
-# Scalarization: Weighted Sum Method
-from src.recipe import Product, Recipe
+from src.recipe import Recipe, Product
 from src.solver import ProductionProblem
 
-OUTPUT_DIR = './moo_png'
-
-def main():
-    save_path = f'{OUTPUT_DIR}/value_waste_example'
-    title = 'Value-Waste Tradeoff'
-    
-    # Hardcode customized recipes
+def create_demo_recipes():
     recipe1 = Recipe('Iron Screw', 'Constructor', True)
     recipe1.add_input(Product('Iron Ingot'), 1)
     recipe1.add_output(Product('Screw'), 4)
@@ -26,15 +19,20 @@ def main():
     recipe5.add_input(Product('Copper Ingot'), 2)
     recipe5.add_output(Product('Copper Wire'), 10)
     recipes = [recipe1, recipe2, recipe3, recipe4, recipe5]
+    return recipes
+
+def create_demo_problem(method='value'):
+    """ Methods: value | waste | value_waste | multi_obj_value_waste """
+    recipes = create_demo_recipes()
     inputs = {
-        Product('Iron Ingot'): 120,
-        Product('Copper Ingot'): 60
+        'Iron Ingot': 120,
+        'Copper Ingot': 60
     }
+    inputs = {Product(k): v for k, v in inputs.items()}
     output_scores = {
-        Product('Reinforced Iron Plate'): 1000,
-        Product('Copper Wire'): 20
+        'Reinforced Iron Plate': 1000,
+        'Copper Wire': 20
     }
-    problem = ProductionProblem(recipes, inputs, output_scores)
-    problem.optimize()
-    problem.create_graph()
-    problem.visualize_graph(save_path, title)
+    output_scores = {Product(k): v for k, v in output_scores.items()}
+    problem = ProductionProblem(recipes, inputs, output_scores, method)
+    return problem
