@@ -1,3 +1,4 @@
+from src.common import ObjMethods
 from src.recipe import Recipe, Product
 from src.solver import ProductionProblem
 
@@ -21,8 +22,8 @@ def create_demo_recipes():
     recipes = [recipe1, recipe2, recipe3, recipe4, recipe5]
     return recipes
 
-def create_demo_problem(method='value'):
-    """ Methods: value | waste | value_waste | multi_obj_value_waste """
+def create_demo_problem(method=ObjMethods.VALUE):
+    """ Methods: Any parameters in ObjMethods """
     recipes = create_demo_recipes()
     inputs = {
         'Iron Ingot': 120,

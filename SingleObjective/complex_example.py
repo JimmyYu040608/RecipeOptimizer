@@ -1,4 +1,5 @@
 import os
+from src.common import ObjMethods
 from src.recipe import Product, load_recipes
 from src.solver import ProductionProblem
 
@@ -24,8 +25,8 @@ def main():
 
     # Create problem
     problem_produce = ProductionProblem(recipes, inputs, output_scores)
-    problem_waste = ProductionProblem(recipes, inputs, output_scores, 'waste')
-    problem_PnW = ProductionProblem(recipes, inputs, output_scores, 'value_waste')
+    problem_waste = ProductionProblem(recipes, inputs, output_scores, ObjMethods.WASTE)
+    problem_PnW = ProductionProblem(recipes, inputs, output_scores, ObjMethods.S_VALUE_WASTE)
         
     if not problem_produce.validate():
         print("Problem (Produce) is invalid")
@@ -44,19 +45,16 @@ def main():
     # Heuristics of maximizing target production
     save_path = f'{OUTPUT_DIR}/production_graph_produce'
     problem_produce.optimize()
-    problem_produce.create_graph()
     problem_produce.print_graph()
     problem_produce.visualize_graph(save_path, 'Production Graph (Maximize Production)')
     # Heuristics of minimizing waste
     save_path = f'{OUTPUT_DIR}/production_graph_waste'
     problem_waste.optimize()
-    problem_waste.create_graph()
     problem_waste.print_graph()
     problem_waste.visualize_graph(save_path, 'Production Graph (Minimize Waste)')
     # Heuristics of maximizing target production with penalty of waste
     save_path = f'{OUTPUT_DIR}/production_graph_produce_and_waste'
     problem_PnW.optimize()
-    problem_PnW.create_graph()
     problem_PnW.print_graph()
     problem_PnW.visualize_graph(save_path, 'Production Graph (Production Penalized with Waste)')
 

@@ -1,3 +1,4 @@
+from src.common import ObjMethods
 from src.recipe import Product, Recipe
 from src.solver import ProductionProblem
 
@@ -20,7 +21,6 @@ def mini_example_opt(save_path, title):
     }
     problem = ProductionProblem(recipes, inputs, output_scores)
     problem.optimize()
-    problem.create_graph()
     problem.visualize_graph(save_path, title)
 
 def mini_example_waste(save_path, title):
@@ -40,7 +40,6 @@ def mini_example_waste(save_path, title):
     }
     problem = ProductionProblem(recipes, inputs, output_scores)
     problem.optimize()
-    problem.create_graph()
     problem.visualize_graph(save_path, title)
 
 def simple_example_waste(save_path, title):
@@ -71,7 +70,6 @@ def simple_example_waste(save_path, title):
         recipe2.name: (recipe2, 30),
         recipe3.name: (recipe3, 15)
     }
-    problem.create_graph()
     problem.visualize_graph(save_path, title)
 
 def simple_example_opt(save_path, title):
@@ -94,9 +92,8 @@ def simple_example_opt(save_path, title):
     output_scores = {
         Product('Reinforced Iron Plate'): 1000,
     }
-    problem = ProductionProblem(recipes, inputs, output_scores, "waste")
+    problem = ProductionProblem(recipes, inputs, output_scores, ObjMethods.WASTE)
     problem.optimize()
-    problem.create_graph()
     problem.visualize_graph(save_path, title)
 
 def alternate_example_waste(save_path, title):
@@ -137,7 +134,6 @@ def alternate_example_waste(save_path, title):
         recipe4.name: (recipe4, 18),
         recipe5.name: (recipe5, 30)
     }
-    problem.create_graph()
     problem.visualize_graph(save_path, title)
 
 def alternate_example_opt(save_path, title, obj_method='produce'):
@@ -169,7 +165,6 @@ def alternate_example_opt(save_path, title, obj_method='produce'):
     }
     problem = ProductionProblem(recipes, inputs, output_scores)
     problem.optimize()
-    problem.create_graph()
     problem.visualize_graph(save_path, title)
 
 def demo():

@@ -9,7 +9,6 @@ def alternate_example_opt(save_path, title, obj_method='produce'):
     # Execute the program
     problem = create_demo_problem(obj_method)
     problem.optimize()
-    problem.create_graph()
     problem.print_graph()
     problem.visualize_graph(save_path, title)
 

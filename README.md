@@ -22,17 +22,28 @@ This section brings you through setting up the environment for using ProductionL
 
 ## Usage
 
-- To run demonstration scripts, first go into the directory of where main.py rooted in
+- To run demonstration scripts, first go into the ProductionLineOptimizer directory
   ```
   cd ProductionLineOptimizer
   ```
-- main.py demonstrates a typical example with the processes from loading data to generating the resulting optimized production graph
+- Single-objective optimization examples demonstrate various scenarios from simple to complex cases
   ```
-  py main.py
+  py -m SingleObjective.simple_example
+  py -m SingleObjective.demo
+  py -m SingleObjective.complex_example
+  py -m SingleObjective.extraordinary_example
   ```
-- demo.py demonstrates other examples, from the simplest examples to some special cases, and how optimization affects the resulting production graph
+- Multi-objective optimization example demonstrates value-waste tradeoff
   ```
-  py demo.py
+  py -m MultiObjective.value_waste_example
+  ```
+- Custom graph drawing utility for creating production topology visualizations
+  ```
+  py custom_draw.py
+  ```
+- Evaluation and comparison utilities
+  ```
+  py -m eval.comparison
   ```
 
 ## Repository Structure
@@ -40,16 +51,38 @@ This section brings you through setting up the environment for using ProductionL
 ```text
 /ProductionLineOptimizer
 ├── /resources
-│   └── data.json       # Contain all data (recipes, items, etc) in game Satisfactory
+│   └── data.json               # Contain all data (recipes, items, etc) in game Satisfactory
 │
 ├── /src
-│   ├── common.py       # Create functions for general use
-│   ├── recipe.py       # Define data structures and functions for recipe data
-│   ├── graph.py        # Define data structures and functions for graphs
-│   └── solver.py       # Solve optimization problem to generate the resulting production graph
+│   ├── common.py               # Create functions for general use
+│   ├── recipe.py               # Define data structures and functions for recipe data
+│   ├── graph.py                # Define data structures and functions for graphs
+│   ├── solver.py               # Solve optimization problem to generate the resulting production graph
+│   └── shared_setup.py         # Shared setup utilities for creating demo problems
 │
-├── main.py             # Demonstrate a normal example of how the program will work
-├── demo.py             # Demonstrate various examples, from simplest ones to special cases
+├── /SingleObjective
+│   ├── simple_example.py       # Simple single-objective optimization examples
+│   ├── demo.py                 # Various demonstration examples
+│   ├── complex_example.py      # Complex production scenarios
+│   └── extraordinary_example.py # Edge cases and special scenarios
+│
+├── /MultiObjective
+│   ├── /src
+│   │   ├── pick_best_pareto.py # Pareto optimal solution selection
+│   │   └── weight_estimate.py  # Weight estimation for multi-objective optimization
+│   └── value_waste_example.py  # Value-waste tradeoff optimization example
+│
+├── /eval
+│   └── comparison.py           # Comparison and plotting utilities for evaluation
+│
+├── /images                     # Generated visualization outputs
+│   ├── /demo                   # Demo example outputs
+│   ├── /draw                   # Custom drawing outputs
+│   ├── /moo                    # Multi-objective optimization outputs
+│   └── /soo                    # Single-objective optimization outputs
+│
+├── custom_draw.py              # Custom graph drawing utilities
+├── requirements.txt            # Python dependencies
 ├── .gitignore
 └── README.md
 ```

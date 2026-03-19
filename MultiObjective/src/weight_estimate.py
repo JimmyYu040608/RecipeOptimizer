@@ -1,5 +1,6 @@
 """ A specialized Python script for estimating most suitable weights for different multi-objective optimization methods, not for doing the optimization itself """
 
+from src.common import ObjMethods
 from src.recipe import Recipe, Product
 from src.shared_setup import create_demo_problem
 from src.solver import ProductionProblem
@@ -20,7 +21,8 @@ def normalize_min(f, f_best, f_worst):
 
 def normalize_max(f, f_best, f_worst):
     """ f is the value of the objective to be maximized, thus f_best >= f_worst """
-    return (f_worst - f) / (f_worst - f_best + 1e-10)
+    return (f - f_worst) / (f_best - f_worst + 1e-10)
+    # return (f_worst - f) / (f_worst - f_best + 1e-10)
 
 
 def normalize(f, f_best, f_worst):
@@ -52,9 +54,9 @@ def ws_value_waste_norm_param(problem_obj: ProblemObj = None):
     f2_problem_worst = None
     if problem_obj is None:
         print("Value-Waste weight estimate: Used demo problem")
-        f2_problem_worst = create_demo_problem('waste')
+        f2_problem_worst = create_demo_problem(ObjMethods.WASTE)
     else:
-        f2_problem_worst = ProductionProblem(problem_obj['recipes'], problem_obj['inputs'], problem_obj['outputs'], 'waste')
+        f2_problem_worst = ProductionProblem(problem_obj['recipes'], problem_obj['inputs'], problem_obj['outputs'], ObjMethods.WASTE)
         
     f2_best = 0 # Background knowledge: Best case = No waste is left
     
@@ -89,7 +91,7 @@ def ws_value_waste_norm_param(problem_obj: ProblemObj = None):
     f2_worst = sum(vertex.wasted_rate for vertex in temp_graph.vertices if isinstance(vertex, WasteVertex))
     temp_graph.visualize('./images/draw/deoptimize_waste', f'Deoptimized Waste Routine (Waste: {f2_worst})')
     
-    print(f1_best, f1_worst, f2_best, f2_worst)
+    print(f"DEBUG: {f1_best}, {f1_worst}, {f2_best}, {f2_worst}")
     return f1_best, f1_worst, f2_best, f2_worst
 
 

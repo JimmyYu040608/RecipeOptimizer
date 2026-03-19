@@ -2,16 +2,17 @@ import numpy as np
 from ortools.linear_solver import pywraplp
 from typing import List, Dict, Set
 
-from src.common import custom_round_float, integer_simplex
+from src.common import custom_round_float, MethodTypes, ObjMethods
 from src.recipe import Product, Recipe
 from src.graph import ProductionGraph, SinkVertex, WasteVertex
+from MultiObjective.src.pick_best_pareto import pick_utopia
 
 RECIPE_MAX = 100 # Maximum allowable amount of any single recipe
 PRODUCT_MAX = 10000 # Maximum allowable amount of any single product
 RECIPE_COST = 0.01 # Small cost to discourage extraneous recipes
 
 class ProductionProblem:
-    def __init__(self, recipes: List[Recipe], inputs: Dict[Product, float], outputs: Dict[Product, float], obj_method="value"):
+    def __init__(self, recipes: List[Recipe], inputs: Dict[Product, float], outputs: Dict[Product, float], obj_method=ObjMethods.VALUE):
         # Initialize input variables
         self.recipes = recipes
         self.inputs = inputs # {product: given_rate}
@@ -37,6 +38,8 @@ class ProductionProblem:
         self.graph = ProductionGraph()
         self.result_output_count = {} # {"output_product_name": int}
         self.result_waste_count = {} # {"wasted_product_name": int}
+        self.result_output_value = 0
+        self.result_waste_value = 0
     
     
     def set_recipe_max(self, value: int):
@@ -61,6 +64,13 @@ class ProductionProblem:
     
     def get_recipe_cost(self):
         return self._recipe_cost
+    
+    
+    def get_recipe_by_name(self, name):
+        for recipe in self.recipes:
+            if recipe.name == name:
+                return recipe
+        raise ValueError(f"Recipe with name {name} not found")
     
     
     def validate(self):
@@ -207,7 +217,7 @@ class ProductionProblem:
     def _multi_obj_value_waste(self):
         """ Multi-objective: maximize production score and minimize waste simultaneously """
         
-        from src.weight_estimate import normalize, ws_value_waste_norm_param
+        from MultiObjective.src.weight_estimate import normalize, ws_value_waste_norm_param
         
         pareto_solutions = []
         weights = np.linspace(0, 1, 21)  # 21 weight combinations
@@ -215,14 +225,15 @@ class ProductionProblem:
         # Obtain normalization parameters for this problem
         problem_obj = {'recipes': self.recipes, 'inputs': self.inputs, 'outputs': self.outputs}
         f1_best, f1_worst, f2_best, f2_worst = ws_value_waste_norm_param(problem_obj)
+        utopia_point = [f1_best, f2_best]
         
         # DEBUG
-        print("DEBUG: Normalize test:")
-        f1_values = [27000, 0.1, 6000, 19999]
-        f2_values = [0, 100, 500, f2_worst]
-        for i in range(4):
-            print(f"f1: {f1_values[i]}, normalized: {normalize(f1_values[i], f1_best, f1_worst)}")
-            print(f"f2: {f2_values[i]}, normalized: {normalize(f2_values[i], f2_best, f2_worst)}")
+        # print("DEBUG: Normalize test:")
+        # f1_values = [27000, 0.1, 6000, 19999]
+        # f2_values = [0, 100, 500, f2_worst]
+        # for i in range(4):
+        #     print(f"f1: {f1_values[i]}, normalized: {normalize(f1_values[i], f1_best, f1_worst)}")
+        #     print(f"f2: {f2_values[i]}, normalized: {normalize(f2_values[i], f2_best, f2_worst)}")
         
         # Iterate through different combinations of weights
         for w1 in weights:
@@ -268,11 +279,19 @@ class ProductionProblem:
         for solution in pareto_solutions:
             print(f"Value: {solution[0]:.2f}, Waste: {solution[1]:.2f}, w1: {solution[2]:.2f}, w2: {solution[3]:.2f}")
         
-        return pareto_solutions
+        # Pick the best solution among pareto solutions based on utopia point
+        best_index = pick_utopia(utopia_point, [(solution[0], solution[1]) for solution in pareto_solutions])
+        
+        # Locate back the best weight set and store best solution
+        best_w1 = pareto_solutions[best_index][2]
+        best_w2 = pareto_solutions[best_index][3]
+        print(f"The best weight between value and waste is {best_w1}:{best_w2}")
+        for recipe_name, sol_val in pareto_solutions[best_index][4].items():
+            # Recall: [4] stores current_solution {recipe.name: ...solution_valuee()}
+            self.opt_recipe_count[recipe_name] = (self.get_recipe_by_name(recipe_name), int(sol_val))
     
     
     def optimize(self):
-        # TODO: Problem: current optimization makes "fulfiling only one output product" always true
         """ Create a production graph optimizing the given recipes for the specified inputs and outputs """
         
         # Validate the problem
@@ -282,7 +301,7 @@ class ProductionProblem:
         # Reduce the problem first by removing irrelevant recipes and inputs
         self.reduce()
         
-        # Flatten recipes to obtain all produces involved
+        # Flatten recipes to obtain all products involved
         products = list(set([c for recipe in self.recipes for c in recipe.products_used()]))
         products.sort()
         
@@ -305,44 +324,30 @@ class ProductionProblem:
                 ct.SetCoefficient(self.recipe_vars[recipe.name], recipe.product_net_rate(product))
                 
         # Create objective function
-        if self.obj_method == "value":
+        if self.obj_method == ObjMethods.VALUE:
             self._set_obj_produce()
-            self._single_obj_solve()
-        elif self.obj_method == "waste":
+        elif self.obj_method == ObjMethods.WASTE:
             self._set_obj_waste()
-            self._single_obj_solve()
-        elif self.obj_method == "value_waste":
+        elif self.obj_method == ObjMethods.S_VALUE_WASTE:
             self._set_obj_produce_and_waste()
-            self._single_obj_solve()
-        elif self.obj_method == "multi_obj_value_waste":
-            pareto_sol = self._multi_obj_value_waste()
-            example_sol = pareto_sol[1] # Hardcode for now
-            self.opt_recipe_count = {recipe.name: (recipe, int(example_sol[4][recipe.name])) for recipe in self.recipes}
-            
+        elif self.obj_method == ObjMethods.M_VALIE_WASTE:
+            self._multi_obj_value_waste()
         else:
             raise ValueError(f"Invalid objective method: {self.obj_method}")
+        # Do nothing if is MULTIPLE (the follow-up has already been handled in their own functions)
+        # Do _single_obj_solve() for obj_mode type being SINGLE
+        if ObjMethods.mode_type(self.obj_method) == MethodTypes.SINGLE:
+            self._single_obj_solve()
         
+        # Next step: Create production graph
+        self.graph.create(self.opt_recipe_count.values(), self.inputs, self.outputs)
         
-    def read_graph(self):
-        """ Retrieve target product counts and waste counts by reading the graph result directly, saving efforts for extra processing in solver """
+        # Read important data back to problem instance for convenience
         for vertex in self.graph.vertices:
             if isinstance(vertex, SinkVertex):
                 self.result_output_count[vertex.receive_product.name] = vertex.receive_rate
             elif isinstance(vertex, WasteVertex):
                 self.result_waste_count[vertex.wasted_product.name] = vertex.wasted_rate
-    
-    
-    def create_graph(self):
-        # Ensure that the problem is optimized
-        if not self.opt_recipe_count:
-            print("No optimization has been performed yet. Please call optimize() first.")
-            return
-        
-        # Build the production graph topology
-        self.graph.create(self.opt_recipe_count.values(), self.inputs, self.outputs)
-        
-        # Read important data back to problem instance for convenience
-        self.read_graph()
     
     
     def print_graph(self):
