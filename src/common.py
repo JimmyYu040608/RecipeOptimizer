@@ -3,14 +3,14 @@ class MethodTypes:
     MULTIPLE = 'multiple_opts'
 
 class ObjMethods:
-    VALUE = 's_value'
-    WASTE = 's_waste'
+    S_VALUE = 's_value'
+    S_WASTE = 's_waste'
     S_VALUE_WASTE = 's_value_waste'
     M_VALIE_WASTE = 'm_value_waste'
     
     @staticmethod
     def mode_type(obj_method) -> MethodTypes:
-        if obj_method in (ObjMethods.VALUE, ObjMethods.WASTE, ObjMethods.S_VALUE_WASTE):
+        if obj_method in (ObjMethods.S_VALUE, ObjMethods.S_WASTE, ObjMethods.S_VALUE_WASTE):
             return MethodTypes.SINGLE
         else:
             return MethodTypes.MULTIPLE

@@ -10,6 +10,7 @@ def main():
     
     problem = create_demo_problem(ObjMethods.M_VALIE_WASTE)
     problem.optimize()
+    problem.create_graph()
     problem.visualize_graph(save_path, title)
 
 if __name__ == '__main__':

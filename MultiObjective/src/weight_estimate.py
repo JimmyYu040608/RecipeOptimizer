@@ -54,9 +54,9 @@ def ws_value_waste_norm_param(problem_obj: ProblemObj = None):
     f2_problem_worst = None
     if problem_obj is None:
         print("Value-Waste weight estimate: Used demo problem")
-        f2_problem_worst = create_demo_problem(ObjMethods.WASTE)
+        f2_problem_worst = create_demo_problem(ObjMethods.S_WASTE)
     else:
-        f2_problem_worst = ProductionProblem(problem_obj['recipes'], problem_obj['inputs'], problem_obj['outputs'], ObjMethods.WASTE)
+        f2_problem_worst = ProductionProblem(problem_obj['recipes'], problem_obj['inputs'], problem_obj['outputs'], ObjMethods.S_WASTE)
         
     f2_best = 0 # Background knowledge: Best case = No waste is left
     

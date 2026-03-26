@@ -1,19 +1,18 @@
-from src.recipe import Product
 from src.shared_setup import create_demo_problem
-from src.solver import ProductionProblem
 
 OUTPUT_DIR = './images/demo'
 
-def alternate_example_opt(save_path, title, obj_method='produce'):
+def alternate_example_opt(save_path, title):
     
     # Execute the program
-    problem = create_demo_problem(obj_method)
+    problem = create_demo_problem()
     problem.optimize()
+    problem.create_graph()
     problem.print_graph()
     problem.visualize_graph(save_path, title)
 
 def demo():
-    alternate_example_opt(f'{OUTPUT_DIR}/alternate_example_opt', 'Example [Opt]')
+    alternate_example_opt(f'{OUTPUT_DIR}/demo', 'Example [Opt]')
 
 if __name__ == '__main__':
     demo()

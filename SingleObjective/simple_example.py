@@ -1,170 +1,131 @@
 from src.common import ObjMethods
-from src.recipe import Product, Recipe
+from src.recipe import Product, Recipe, get_item_sink_pt
 from src.solver import ProductionProblem
+from src.shared_setup import DemoItems, DemoRecipes
 
 OUTPUT_DIR = './images/demo'
 
 def mini_example_opt(save_path, title):
     """ Example of a production problem with a single recipe """
     # Hardcode customized recipes
+    iron_plate = Product('Iron Plate', 40)
+    screw = Product('Screw', 5)
+    combined_iron_plate = Product('Combined Iron Plate', 100)
     recipe = Recipe('Combined Iron Plate', 'Assembler', False)
-    recipe.add_input(Product('Iron Plate'), 2)
-    recipe.add_input(Product('Screw'), 4)
-    recipe.add_output(Product('Combined Iron Plate'), 1)
+    recipe.add_input(iron_plate, 2)
+    recipe.add_input(screw, 4)
+    recipe.add_output(combined_iron_plate, 1)
     recipes = [recipe]
     inputs = {
-        Product('Iron Plate'): 6,
-        Product('Screw'): 12
+        iron_plate: 6,
+        screw: 12
     }
     output_scores = {
-        Product('Combined Iron Plate'): 10,
+        combined_iron_plate: 10,
     }
     problem = ProductionProblem(recipes, inputs, output_scores)
     problem.optimize()
+    problem.create_graph()
     problem.visualize_graph(save_path, title)
 
 def mini_example_waste(save_path, title):
     """ Example of a production problem with a single recipe, with waste """
     # Hardcode customized recipes
+    iron_plate = Product('Iron Plate', 40)
+    screw = Product('Screw', 5)
+    combined_iron_plate = Product('Combined Iron Plate', 100)
     recipe = Recipe('Combined Iron Plate', 'Assembler', False)
-    recipe.add_input(Product('Iron Plate'), 2)
-    recipe.add_input(Product('Screw'), 4)
-    recipe.add_output(Product('Combined Iron Plate'), 1)
+    recipe.add_input(iron_plate, 2)
+    recipe.add_input(screw, 4)
+    recipe.add_output(combined_iron_plate, 1)
     recipes = [recipe]
     inputs = {
-        Product('Iron Plate'): 2,
-        Product('Screw'): 12
+        iron_plate: 2,
+        screw: 12
     }
     output_scores = {
-        Product('Combined Iron Plate'): 10,
+        combined_iron_plate: 10,
     }
     problem = ProductionProblem(recipes, inputs, output_scores)
     problem.optimize()
+    problem.create_graph()
     problem.visualize_graph(save_path, title)
 
 def simple_example_waste(save_path, title):
     """ Example of a production problem with ratio adjustment, with waste """
     # Hardcode customized recipes
-    recipe1 = Recipe('Iron Screw', 'Constructor', True)
-    recipe1.add_input(Product('Iron Ingot'), 1)
-    recipe1.add_output(Product('Screw'), 4)
-    recipe2 = Recipe('Iron Plate', 'Constructor', False)
-    recipe2.add_input(Product('Iron Ingot'), 3)
-    recipe2.add_output(Product('Iron Plate'), 2)
-    recipe3 = Recipe('Reinforced Iron Plate', 'Constructor', False)
-    recipe3.add_input(Product('Iron Plate'), 3)
-    recipe3.add_input(Product('Screw'), 8)
-    recipe3.add_output(Product('Reinforced Iron Plate'), 1)
-    recipes = [recipe1, recipe2, recipe3]
+    recipes = [DemoRecipes.iron_screw, DemoRecipes.iron_plate, DemoRecipes.reinforced_iron_plate]
     inputs = {
-        Product('Iron Ingot'): 120,
+        DemoItems.iron_ingot: 120,
     }
     output_scores = {
-        Product('Reinforced Iron Plate'): 1000,
+        DemoItems.reinforced_iron_plate: 1000,
     }
     problem = ProductionProblem(recipes, inputs, output_scores)
     problem.optimize()
     # Intercept to hardcode create wasteful arrangements
     problem.opt_recipe_count = {
-        recipe1.name: (recipe1, 30),
-        recipe2.name: (recipe2, 30),
-        recipe3.name: (recipe3, 15)
+        recipes[0].name: (recipes[0], 30),
+        recipes[1].name: (recipes[1], 30),
+        recipes[2].name: (recipes[2], 15)
     }
+    problem.create_graph()
     problem.visualize_graph(save_path, title)
 
 def simple_example_opt(save_path, title):
     """ Example of a production problem with ratio adjustment, with least waste """
     # Hardcode customized recipes
-    recipe1 = Recipe('Iron Screw', 'Constructor', True)
-    recipe1.add_input(Product('Iron Ingot'), 1)
-    recipe1.add_output(Product('Screw'), 4)
-    recipe2 = Recipe('Iron Plate', 'Constructor', False)
-    recipe2.add_input(Product('Iron Ingot'), 3)
-    recipe2.add_output(Product('Iron Plate'), 2)
-    recipe3 = Recipe('Reinforced Iron Plate', 'Constructor', False)
-    recipe3.add_input(Product('Iron Plate'), 3)
-    recipe3.add_input(Product('Screw'), 8)
-    recipe3.add_output(Product('Reinforced Iron Plate'), 1)
-    recipes = [recipe1, recipe2, recipe3]
+    recipes = [DemoRecipes.iron_screw, DemoRecipes.iron_plate, DemoRecipes.reinforced_iron_plate]
     inputs = {
-        Product('Iron Ingot'): 120,
+        DemoItems.iron_ingot: 120,
     }
     output_scores = {
-        Product('Reinforced Iron Plate'): 1000,
+        DemoItems.reinforced_iron_plate: 1000,
     }
-    problem = ProductionProblem(recipes, inputs, output_scores, ObjMethods.WASTE)
+    problem = ProductionProblem(recipes, inputs, output_scores)
     problem.optimize()
+    problem.create_graph()
     problem.visualize_graph(save_path, title)
 
 def alternate_example_waste(save_path, title):
     """ Example of a production problem with alternate recipes, with waste """
     # Hardcode customized recipes
-    recipe1 = Recipe('Iron Screw', 'Constructor', True)
-    recipe1.add_input(Product('Iron Ingot'), 1)
-    recipe1.add_output(Product('Screw'), 4)
-    recipe2 = Recipe('Copper Screw', 'Constructor', True)
-    recipe2.add_input(Product('Copper Ingot'), 1)
-    recipe2.add_output(Product('Screw'), 4)
-    recipe3 = Recipe('Iron Plate', 'Constructor', False)
-    recipe3.add_input(Product('Iron Ingot'), 3)
-    recipe3.add_output(Product('Iron Plate'), 2)
-    recipe4 = Recipe('Reinforced Iron Plate', 'Constructor', False)
-    recipe4.add_input(Product('Iron Plate'), 3)
-    recipe4.add_input(Product('Screw'), 8)
-    recipe4.add_output(Product('Reinforced Iron Plate'), 1)
-    recipe5 = Recipe('Copper Wire', 'Constructor', False)
-    recipe5.add_input(Product('Copper Ingot'), 2)
-    recipe5.add_output(Product('Copper Wire'), 10)
-    recipes = [recipe1, recipe2, recipe3, recipe4, recipe5]
+    recipes = DemoRecipes.get_demo_recipes()
     inputs = {
-        Product('Iron Ingot'): 120,
-        Product('Copper Ingot'): 60
+        DemoItems.iron_ingot: 120,
+        DemoItems.copper_ingot: 60
     }
     output_scores = {
-        Product('Reinforced Iron Plate'): 1000,
-        Product('Copper Wire'): 20
+        DemoItems.reinforced_iron_plate: 1000,
+        DemoItems.copper_wire: 20
     }
     problem = ProductionProblem(recipes, inputs, output_scores)
     problem.optimize()
     # Intercept to hardcode create wasteful arrangements
     problem.opt_recipe_count = {
-        recipe1.name: (recipe1, 36),
-        recipe2.name: (recipe2, 0),
-        recipe3.name: (recipe3, 27),
-        recipe4.name: (recipe4, 18),
-        recipe5.name: (recipe5, 30)
+        recipes[0].name: (recipes[0], 36),
+        recipes[1].name: (recipes[1], 0),
+        recipes[2].name: (recipes[2], 27),
+        recipes[3].name: (recipes[3], 18),
+        recipes[4].name: (recipes[4], 30)
     }
+    problem.create_graph()
     problem.visualize_graph(save_path, title)
 
-def alternate_example_opt(save_path, title, obj_method='produce'):
+def alternate_example_opt(save_path, title):
     # Hardcode customized recipes
-    recipe1 = Recipe('Iron Screw', 'Constructor', True)
-    recipe1.add_input(Product('Iron Ingot'), 1)
-    recipe1.add_output(Product('Screw'), 4)
-    recipe2 = Recipe('Copper Screw', 'Constructor', True)
-    recipe2.add_input(Product('Copper Ingot'), 1)
-    recipe2.add_output(Product('Screw'), 4)
-    recipe3 = Recipe('Iron Plate', 'Constructor', False)
-    recipe3.add_input(Product('Iron Ingot'), 3)
-    recipe3.add_output(Product('Iron Plate'), 2)
-    recipe4 = Recipe('Reinforced Iron Plate', 'Constructor', False)
-    recipe4.add_input(Product('Iron Plate'), 3)
-    recipe4.add_input(Product('Screw'), 8)
-    recipe4.add_output(Product('Reinforced Iron Plate'), 1)
-    recipe5 = Recipe('Copper Wire', 'Constructor', False)
-    recipe5.add_input(Product('Copper Ingot'), 2)
-    recipe5.add_output(Product('Copper Wire'), 10)
-    recipes = [recipe1, recipe2, recipe3, recipe4, recipe5]
+    recipes = DemoRecipes.get_demo_recipes()
     inputs = {
-        Product('Iron Ingot'): 120,
-        Product('Copper Ingot'): 60
+        DemoItems.iron_ingot: 120,
+        DemoItems.copper_ingot: 60
     }
     output_scores = {
-        Product('Reinforced Iron Plate'): 1000,
-        Product('Copper Wire'): 20
+        DemoItems.reinforced_iron_plate: 1000,
+        DemoItems.copper_wire: 20
     }
     problem = ProductionProblem(recipes, inputs, output_scores)
     problem.optimize()
+    problem.create_graph()
     problem.visualize_graph(save_path, title)
 
 def demo():

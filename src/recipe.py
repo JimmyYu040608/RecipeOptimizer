@@ -34,8 +34,9 @@ class Building:
 
 class Product:
     """ Represents a specific placeholder of string for a product that involves in a recipe """
-    def __init__(self, name: str):
+    def __init__(self, name: str, sink_pt: int):
         self.name = name
+        self.sink_pt = sink_pt
 
     def __str__(self):
         return self.name
@@ -119,7 +120,7 @@ def load_recipes() -> List[Recipe]:
         data = json.load(f)
     
     # Load data related to recipes as well
-    item_data = data["items"] # For getting readable item names from their json name
+    item_data = data["items"] # For getting readable item names and sink points from their json name
     building_data = data["buildings"] # For getting readable building names from their json name
     recipe_data = data["recipes"]
     
@@ -145,16 +146,32 @@ def load_recipes() -> List[Recipe]:
         for ingredient in recipe_content["ingredients"]:
             item_id = ingredient["item"]
             item_name = item_data[item_id]["name"]
+            item_sink_pt = item_data[item_id]["sinkPoints"]
             amount = ingredient["amount"]
-            recipe.add_input(Product(item_name), float(amount) * multiplier)
+            recipe.add_input(Product(item_name, item_sink_pt), float(amount) * multiplier)
         
         # Add output products to the recipe
         for product in recipe_content["products"]:
             item_id = product["item"]
             item_name = item_data[item_id]["name"]
+            item_sink_pt = item_data[item_id]["sinkPoints"]
             amount = product["amount"]
-            recipe.add_output(Product(item_name), float(amount) * multiplier)
+            recipe.add_output(Product(item_name, item_sink_pt), float(amount) * multiplier)
         
         recipes.append(recipe)
     
     return recipes
+
+def get_item_sink_pt(item_name: str) -> int:
+    """ Get the sink point of a specific item by its name """
+    path = os.path.join(os.path.dirname(__file__), "..", "resources", "data.json")
+    # Open and parse the JSON file
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    # Load all items
+    item_data = data["items"]
+    # Loop through items to locate the target
+    for item_id, item_content in item_data.items():
+        if item_content["name"] == item_name:
+            return item_content["sinkPoints"]
+    raise ValueError(f"Item '{item_name}' not found in data.json")

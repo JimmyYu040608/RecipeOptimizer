@@ -1,6 +1,6 @@
 import os
 from src.common import ObjMethods
-from src.recipe import Product, load_recipes
+from src.recipe import Product, load_recipes, get_item_sink_pt
 from src.solver import ProductionProblem
 
 OUTPUT_DIR = "./images/soo"
@@ -16,16 +16,16 @@ def main():
         "Coal": 533.33,
         "Sulfur": 533.33
     }
-    inputs = {Product(k): v for k, v in inputs.items()}
+    inputs = {Product(k, get_item_sink_pt(k)): v for k, v in inputs.items()}
     output_scores = { # {Product: score}
         "Fuel": 600,
         "Turbofuel": 2000
     }
-    output_scores = {Product(k): v for k, v in output_scores.items()}
+    output_scores = {Product(k, get_item_sink_pt(k)): v for k, v in output_scores.items()}
 
     # Create problem
     problem_produce = ProductionProblem(recipes, inputs, output_scores)
-    problem_waste = ProductionProblem(recipes, inputs, output_scores, ObjMethods.WASTE)
+    problem_waste = ProductionProblem(recipes, inputs, output_scores, ObjMethods.S_WASTE)
     problem_PnW = ProductionProblem(recipes, inputs, output_scores, ObjMethods.S_VALUE_WASTE)
         
     if not problem_produce.validate():
@@ -43,18 +43,21 @@ def main():
         os.makedirs(OUTPUT_DIR)
     
     # Heuristics of maximizing target production
-    save_path = f'{OUTPUT_DIR}/production_graph_produce'
+    save_path = f'{OUTPUT_DIR}/production_graph_value'
     problem_produce.optimize()
+    problem_produce.create_graph()
     problem_produce.print_graph()
     problem_produce.visualize_graph(save_path, 'Production Graph (Maximize Production)')
     # Heuristics of minimizing waste
     save_path = f'{OUTPUT_DIR}/production_graph_waste'
     problem_waste.optimize()
+    problem_waste.create_graph()
     problem_waste.print_graph()
     problem_waste.visualize_graph(save_path, 'Production Graph (Minimize Waste)')
     # Heuristics of maximizing target production with penalty of waste
-    save_path = f'{OUTPUT_DIR}/production_graph_produce_and_waste'
+    save_path = f'{OUTPUT_DIR}/production_graph_value_and_waste'
     problem_PnW.optimize()
+    problem_PnW.create_graph()
     problem_PnW.print_graph()
     problem_PnW.visualize_graph(save_path, 'Production Graph (Production Penalized with Waste)')
 
