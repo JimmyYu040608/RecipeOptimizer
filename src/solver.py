@@ -5,7 +5,7 @@ from typing import List, Dict, Set
 from src.common import custom_round_float, MethodTypes, ObjMethods
 from src.recipe import Product, Recipe
 from src.graph import ProductionGraph, SinkVertex, WasteVertex
-from MultiObjective.src.pick_best_pareto import pick_utopia
+from src.multi_objective.pick_best_pareto import pick_utopia
 
 RECIPE_MAX = 100 # Maximum allowable amount of any single recipe
 PRODUCT_MAX = 10000 # Maximum allowable amount of any single product
@@ -21,6 +21,16 @@ class ProductionProblem:
         self._recipe_max = RECIPE_MAX
         self._product_max = PRODUCT_MAX
         self._recipe_cost = RECIPE_COST
+        # Initialize other optimization variables
+        self.recipe_vars = {} # {"recipe_name": RecipeVariable}
+        self.objective = None
+        # Initialize output variables
+        self.opt_recipe_count = {} # {"recipe_name": (Recipe, int)}
+        self.graph = ProductionGraph()
+        self.result_output_count = {} # {"output_product_name": int}
+        self.result_waste_count = {} # {"wasted_product_name": int}
+        self.result_output_value = None
+        self.result_waste_value = None
         
         # Initialize the solver
         # GLOP: General linear programming solver
@@ -28,19 +38,7 @@ class ProductionProblem:
         self.solver = pywraplp.Solver.CreateSolver("SCIP")
         if not self.solver:
             raise ValueError("Solver not found")
-        
-        # Initialize other optimization variables
-        self.recipe_vars = {} # {"recipe_name": RecipeVariable}
-        self.objective = None
-        
-        # Initialize output variables
-        self.opt_recipe_count = {} # {"recipe_name": (Recipe, int)}
-        self.graph = ProductionGraph()
-        self.result_output_count = {} # {"output_product_name": int}
-        self.result_waste_count = {} # {"wasted_product_name": int}
-        self.result_output_value = 0
-        self.result_waste_value = 0
-    
+
     
     def set_recipe_max(self, value: int):
         self._recipe_max = value
@@ -217,7 +215,7 @@ class ProductionProblem:
     def _multi_obj_value_waste(self):
         """ Multi-objective: maximize production score and minimize waste simultaneously """
         
-        from MultiObjective.src.weight_estimate import normalize, ws_value_waste_norm_param
+        from src.multi_objective.weight_estimate import normalize, ws_value_waste_norm_param
         
         pareto_solutions = []
         weights = np.linspace(0, 1, 21)  # 21 weight combinations
@@ -275,9 +273,10 @@ class ProductionProblem:
             
             pareto_solutions.append((total_value, total_waste, w1, w2, current_solution))
         
-        print("Pareto Front Solutions (Value, Waste, w_production, w_waste):")
-        for solution in pareto_solutions:
-            print(f"Value: {solution[0]:.2f}, Waste: {solution[1]:.2f}, w1: {solution[2]:.2f}, w2: {solution[3]:.2f}")
+        # DEBUG
+        # print("Pareto Front Solutions (Value, Waste, w_production, w_waste):")
+        # for solution in pareto_solutions:
+        #     print(f"Value: {solution[0]:.2f}, Waste: {solution[1]:.2f}, w1: {solution[2]:.2f}, w2: {solution[3]:.2f}")
         
         # Pick the best solution among pareto solutions based on utopia point
         best_index = pick_utopia(utopia_point, [(solution[0], solution[1]) for solution in pareto_solutions])
@@ -330,7 +329,7 @@ class ProductionProblem:
             self._set_obj_waste()
         elif self.obj_method == ObjMethods.S_VALUE_WASTE:
             self._set_obj_produce_and_waste()
-        elif self.obj_method == ObjMethods.M_VALIE_WASTE:
+        elif self.obj_method == ObjMethods.M_VALUE_WASTE:
             self._multi_obj_value_waste()
         else:
             raise ValueError(f"Invalid objective method: {self.obj_method}")
@@ -384,6 +383,18 @@ class ProductionProblem:
         # Edit title to display important metrics as well
         title = f"{title} (Product Value: {total_score}, Wasted: {total_waste} unit/min)"
         self.graph.visualize(save_path, title)
+    
+    
+    def get_value(self):
+        if self.result_output_value is None:
+            raise ValueError("Graph has not been created yet. Please call create_graph() first.")
+        return self.result_output_value
+    
+    
+    def get_waste(self):
+        if self.result_waste_value is None:
+            raise ValueError("Graph has not been created yet. Please call create_graph() first.")
+        return self.result_waste_value
 
 
 def validate_product(recipes: List[Recipe], input_products: List[Product], target_product: Product, visiting_set: Set[Product] = None, valid_dict: Dict[Product, bool] = None) -> bool:

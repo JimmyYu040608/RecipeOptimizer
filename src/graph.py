@@ -118,7 +118,7 @@ class ProductionGraph:
             vertex = SourceVertex(product, custom_round_float(rate))
             self.add_vertex(vertex)
             source_vertices.append(vertex)
-            
+              
         # Add sink vertices
         for product, score in outputs.items():
             vertex = SinkVertex(product, 0)

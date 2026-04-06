@@ -1,11 +1,12 @@
-from src.shared_setup import create_demo_problem
+from src.demo_data import DemoProblems
+from src.common import ObjMethods
 
 OUTPUT_DIR = './images/demo'
 
 def alternate_example_opt(save_path, title):
     
     # Execute the program
-    problem = create_demo_problem()
+    problem = DemoProblems.demo_example(ObjMethods.S_VALUE)
     problem.optimize()
     problem.create_graph()
     problem.print_graph()

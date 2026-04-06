@@ -2,7 +2,7 @@
 
 from src.common import ObjMethods
 from src.recipe import Recipe, Product
-from src.shared_setup import create_demo_problem
+from src.demo_data import DemoProblems
 from src.solver import ProductionProblem
 from src.graph import ProductionGraph, WasteVertex
 from typing import List, Dict, TypedDict
@@ -42,19 +42,20 @@ def ws_value_waste_norm_param(problem_obj: ProblemObj = None):
     f1_problem = None
     if problem_obj is None:
         print("Value-Waste weight estimate: Used demo problem")
-        f1_problem = create_demo_problem()
+        f1_problem = DemoProblems.demo_example(ObjMethods.S_VALUE)
     else:
         f1_problem = ProductionProblem(problem_obj['recipes'], problem_obj['inputs'], problem_obj['outputs'])
     # Solve for best f1 value independently
     f1_problem.optimize()
-    f1_best = sum(f1_problem.recipe_vars[recipe.name].solution_value() * sum([recipe.product_net_rate(c) * s for c, s in f1_problem.outputs.items()]) for recipe in f1_problem.recipes)
+    f1_problem.create_graph()
+    f1_best = f1_problem.get_value() # Background knowledge: Best case = Maximum value achieved by optimizing for value only
     
     
     # f2: Minimize waste
     f2_problem_worst = None
     if problem_obj is None:
         print("Value-Waste weight estimate: Used demo problem")
-        f2_problem_worst = create_demo_problem(ObjMethods.S_WASTE)
+        f2_problem_worst = DemoProblems.demo_example(ObjMethods.S_WASTE)
     else:
         f2_problem_worst = ProductionProblem(problem_obj['recipes'], problem_obj['inputs'], problem_obj['outputs'], ObjMethods.S_WASTE)
         
@@ -85,13 +86,12 @@ def ws_value_waste_norm_param(problem_obj: ProblemObj = None):
         f2_problem_worst.opt_recipe_count[recipe.name] = (recipe, int(f2_problem_worst.recipe_vars[recipe.name].solution_value()))
     # End of "deoptimize" procedure
     
-    # Create temporary graph to calculate actual waste
-    temp_graph = ProductionGraph()
-    temp_graph.create([(recipe, int(f2_problem_worst.recipe_vars[recipe.name].solution_value())) for recipe in f2_problem_worst.recipes], f2_problem_worst.inputs, f2_problem_worst.outputs)
-    f2_worst = sum(vertex.wasted_rate for vertex in temp_graph.vertices if isinstance(vertex, WasteVertex))
-    temp_graph.visualize('./images/draw/deoptimize_waste', f'Deoptimized Waste Routine (Waste: {f2_worst})')
+    # Create graph to calculate actual waste
+    f2_problem_worst.create_graph()
+    f2_worst = f2_problem_worst.get_waste() # Background knowledge: Worst case = Maximum waste achieved by optimizing for waste 
     
-    print(f"DEBUG: {f1_best}, {f1_worst}, {f2_best}, {f2_worst}")
+    # DEBUG
+    # print(f"DEBUG: {f1_best}, {f1_worst}, {f2_best}, {f2_worst}")
     return f1_best, f1_worst, f2_best, f2_worst
 
 

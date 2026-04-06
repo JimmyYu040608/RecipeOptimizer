@@ -6,7 +6,7 @@ class ObjMethods:
     S_VALUE = 's_value'
     S_WASTE = 's_waste'
     S_VALUE_WASTE = 's_value_waste'
-    M_VALIE_WASTE = 'm_value_waste'
+    M_VALUE_WASTE = 'm_value_waste'
     
     @staticmethod
     def mode_type(obj_method) -> MethodTypes:
