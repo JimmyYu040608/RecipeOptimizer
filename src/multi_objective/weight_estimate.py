@@ -1,6 +1,6 @@
 """ A specialized Python script for estimating most suitable weights for different multi-objective optimization methods, not for doing the optimization itself """
 
-from src.common import ObjMethods
+from src.utils import ObjMethods
 from src.recipe import Recipe, Product
 from src.demo_data import DemoProblems
 from src.solver import ProductionProblem
@@ -93,11 +93,3 @@ def ws_value_waste_norm_param(problem_obj: ProblemObj = None):
     # DEBUG
     # print(f"DEBUG: {f1_best}, {f1_worst}, {f2_best}, {f2_worst}")
     return f1_best, f1_worst, f2_best, f2_worst
-
-
-def main():
-    pass
-
-
-if __name__ == "__main__":
-    pass

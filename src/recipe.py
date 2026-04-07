@@ -63,18 +63,30 @@ class Product:
 
 @dataclass(eq=False)
 class Recipe:
-    """ Represents a recipe and its specified input, output, building etc """
+    """Represents a recipe together with its building, inputs, and outputs."""
     name: str
-    building: str | Building
+    building: Building | str
     alternate: bool = False
     inputs: Dict[Product, float] = field(default_factory=dict)
     outputs: Dict[Product, float] = field(default_factory=dict)
+
+    def __post_init__(self):
+        if isinstance(self.building, str):
+            self.building = Building(self.building)
     
     def __str__(self):
         return self.name
     
     def __repr__(self):
         return self.name
+
+    @property
+    def building_name(self) -> str:
+        return self.building.name
+
+    @property
+    def power_consumption(self) -> float:
+        return self.building.power_consumption
     
     def add_input(self, product: Product, rate: float):
         self.inputs[product] = rate
@@ -126,6 +138,13 @@ def load_recipes() -> List[Recipe]:
     item_data = data["items"] # For getting readable item names and sink points from their json name
     building_data = data["buildings"] # For getting readable building names from their json name
     recipe_data = data["recipes"]
+    building_cache = {
+        building_id: Building(
+            building_content["name"],
+            float(building_content.get("powerConsumption", 0.0)),
+        )
+        for building_id, building_content in building_data.items()
+    }
     
     # Iterate through each recipe in the "recipes" object
     for recipe_id, recipe_content in recipe_data.items():
@@ -139,10 +158,10 @@ def load_recipes() -> List[Recipe]:
         
         # Get the building where this recipe is produced (use first one if multiple)
         building_id = recipe_content["producedIn"][0]
-        building_name = building_data[building_id]["name"]
+        building = building_cache[building_id]
         
         # Create the recipe object
-        recipe = Recipe(name, building_name, alternate)
+        recipe = Recipe(name, building, alternate)
         
         # Add input ingredients to the recipe
         multiplier = 60 / recipe_content["time"] # To convert all amounts to rate per minute

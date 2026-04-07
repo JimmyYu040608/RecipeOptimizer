@@ -3,7 +3,7 @@ import threading
 from dataclasses import dataclass
 from typing import Callable, List, Dict, Tuple
 
-from src.common import ObjMethods
+from src.utils import ObjMethods
 from src.solver import ProductionProblem
 
 

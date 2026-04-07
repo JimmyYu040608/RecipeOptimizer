@@ -2,7 +2,7 @@ import numpy as np
 from ortools.linear_solver import pywraplp
 from typing import List, Dict, Set
 
-from src.common import custom_round_float, MethodTypes, ObjMethods
+from src.utils import custom_round_float, MethodTypes, ObjMethods
 from src.recipe import Product, Recipe
 from src.graph import ProductionGraph, SinkVertex, WasteVertex
 from src.multi_objective.pick_best_pareto import pick_utopia

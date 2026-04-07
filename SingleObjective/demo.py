@@ -1,5 +1,5 @@
 from src.demo_data import DemoProblems
-from src.common import ObjMethods
+from src.utils import ObjMethods
 
 OUTPUT_DIR = './images/demo'
 

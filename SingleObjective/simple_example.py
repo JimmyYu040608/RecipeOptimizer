@@ -1,4 +1,4 @@
-from src.common import ObjMethods
+from src.utils import ObjMethods
 from src.recipe import Product, Recipe, get_item_sink_pt
 from src.solver import ProductionProblem
 from src.demo_data import DemoItems, DemoRecipes

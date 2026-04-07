@@ -1,5 +1,5 @@
 from typing import List
-from src.common import ObjMethods
+from src.utils import ObjMethods
 from src.recipe import Recipe, Product, load_recipes, get_item_sink_pt
 from src.solver import ProductionProblem
 

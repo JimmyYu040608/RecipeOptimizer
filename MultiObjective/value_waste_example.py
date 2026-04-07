@@ -1,5 +1,5 @@
 # Scalarization: Weighted Sum Method
-from src.common import ObjMethods
+from src.utils import ObjMethods
 from src.demo_data import DemoProblems
 
 OUTPUT_DIR = './images/moo'

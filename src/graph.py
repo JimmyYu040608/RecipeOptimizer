@@ -2,7 +2,7 @@ from typing import List, Dict, Tuple
 from collections import deque
 from graphviz import Digraph
 
-from src.common import custom_round_float
+from src.utils import custom_round_float
 from src.recipe import Product, Recipe
 
 
