@@ -1,16 +1,19 @@
+from dataclasses import dataclass, field
 from typing import List, Dict, Set
 import json
 import os
 
+DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "resources", "data_1.1.json")
 
 # ================================
 # Classes Section
 # ================================
 
+@dataclass(frozen=True, eq=False)
 class Building:
     """ Represents a specific placeholder of string for building type, no special function """
-    def __init__(self, name: str):
-        self.name = name
+    name: str
+    power_consumption: float = 0.0
     
     def __str__(self):
         return self.name
@@ -19,7 +22,7 @@ class Building:
         return self.name
     
     def __eq__(self, other):
-        if isinstance(other, Product):
+        if isinstance(other, Building):
             return self.name == other.name
         return False
 
@@ -27,16 +30,16 @@ class Building:
         return hash(self.name)
 
     def __lt__(self, other):
-        if isinstance(other, Product):
+        if isinstance(other, Building):
             return self.name < other.name
         return NotImplemented
 
 
+@dataclass(frozen=True, eq=False)
 class Product:
     """ Represents a specific placeholder of string for a product that involves in a recipe """
-    def __init__(self, name: str, sink_pt: int):
-        self.name = name
-        self.sink_pt = sink_pt
+    name: str
+    sink_pt: int
 
     def __str__(self):
         return self.name
@@ -58,14 +61,14 @@ class Product:
         return NotImplemented
 
 
+@dataclass(eq=False)
 class Recipe:
     """ Represents a recipe and its specified input, output, building etc """
-    def __init__(self, name: str, building: Building, alternate=False):
-        self.name = name
-        self.building: Building = building
-        self.inputs: Dict[Product, float] = {}
-        self.outputs: Dict[Product, float] = {}
-        self.alternate = alternate
+    name: str
+    building: str | Building
+    alternate: bool = False
+    inputs: Dict[Product, float] = field(default_factory=dict)
+    outputs: Dict[Product, float] = field(default_factory=dict)
     
     def __str__(self):
         return self.name
@@ -113,7 +116,7 @@ class Recipe:
 def load_recipes() -> List[Recipe]:
     """ Loads recipes from a JSON file """
     
-    path = os.path.join(os.path.dirname(__file__), "..", "resources", "data.json")
+    path = DATA_PATH
     recipes = []
     # Open and parse the JSON file
     with open(path, "r", encoding="utf-8") as f:
@@ -164,7 +167,7 @@ def load_recipes() -> List[Recipe]:
 
 def get_item_sink_pt(item_name: str) -> int:
     """ Get the sink point of a specific item by its name """
-    path = os.path.join(os.path.dirname(__file__), "..", "resources", "data.json")
+    path = DATA_PATH
     # Open and parse the JSON file
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -174,4 +177,4 @@ def get_item_sink_pt(item_name: str) -> int:
     for item_id, item_content in item_data.items():
         if item_content["name"] == item_name:
             return item_content["sinkPoints"]
-    raise ValueError(f"Item '{item_name}' not found in data.json")
+    raise ValueError(f"Item '{item_name}' not found in data file")

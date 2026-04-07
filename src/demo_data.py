@@ -77,7 +77,7 @@ class DemoProblems:
     def example_5(method: ObjMethods) -> ProductionProblem:
         """ Medium example with around 5 major outputs and around 5 inputs """
         
-        # Load real recipes from data.json
+        # Load real recipes from data JSON file
         recipes = load_recipes()
         
         # 5 Input materials: Raw materials and premature products
@@ -86,20 +86,64 @@ class DemoProblems:
             "Copper Ore": 50,
             "Coal": 250,
             "Limestone": 50,
-            "Water": 600,
-            "Sulfur": 150,
             "Wood": 180,
+            "Water": 600,
             "Crude Oil": 100,
         }
         inputs = {Product(k, get_item_sink_pt(k)): v for k, v in inputs.items()}
         
         # 5 Output materials: Big/completed products (target production items)
         output_scores = {
-            "Smart Plating": 500,
+            "Smart Plating": 520,
             "Versatile Framework": 1176,
             "Automated Wiring": 1440,
             "Modular Engine": 9960,
-            "Adaptive Control Unit": 86120,
+            "Adaptive Control Unit": 76368,
+        }
+        output_scores = {Product(k, get_item_sink_pt(k)): v for k, v in output_scores.items()}
+        
+        problem = ProductionProblem(recipes, inputs, output_scores, method)
+        return problem
+    
+    def example_12(method: ObjMethods) -> ProductionProblem:
+        """ Large example with around 12 major outputs and around 12 inputs """
+        # Load real recipes from data JSON file
+        recipes = load_recipes()
+        
+        # Input materials: Raw materials and premature products
+        # 10% of total resource nodes
+        inputs = {
+            "Iron Ore": 9200,
+            "Copper Ore": 3600,
+            "Coal": 4200,
+            "Limestone": 6900,
+            "Wood": 1000,
+            "Water": 1300,
+            "Crude Oil": 1200,
+            "Caterium Ore": 1500,
+            "Sulfur": 1000,
+            "Bauxite": 1200,
+            "Nitrogen Gas": 1200,
+            "Raw Quartz": 1300,
+            "SAM": 1000,
+            "Uranium": 200,
+        }
+        inputs = {Product(k, get_item_sink_pt(k)): v for k, v in inputs.items()}
+        
+        # 12 Output materials: Big/completed products (target production items)
+        output_scores = {
+            "Smart Plating": 520,
+            "Versatile Framework": 1176,
+            "Automated Wiring": 1440,
+            "Modular Engine": 9960,
+            "Adaptive Control Unit": 76368,
+            "Magnetic Field Generator": 11000,
+            "Assembly Director System": 500176,
+            "Thermal Propulsion Rocket": 728508,
+            "Nuclear Pasta": 538976,
+            "Biochemical Sculptor": 301778,
+            "Ballistic Warp Drive": 2895334,
+            "AI Expansion Server": 597652,
         }
         output_scores = {Product(k, get_item_sink_pt(k)): v for k, v in output_scores.items()}
         

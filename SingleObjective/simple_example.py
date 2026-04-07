@@ -1,7 +1,7 @@
 from src.common import ObjMethods
 from src.recipe import Product, Recipe, get_item_sink_pt
 from src.solver import ProductionProblem
-from src.shared_setup import DemoItems, DemoRecipes
+from src.demo_data import DemoItems, DemoRecipes
 
 OUTPUT_DIR = './images/demo'
 

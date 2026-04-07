@@ -1,11 +1,13 @@
-import matplotlib.pyplot as plt
 from typing import List
+from dataclasses import dataclass
+import matplotlib.pyplot as plt
 
+@dataclass(frozen=True)
 class PlotResult:
-    def __init__(self, method_name: str, production: float, waste: float):
-        self.method_name = method_name
-        self.production = production
-        self.waste = waste
+    method_name: str
+    production: float
+    waste: float
+
 
 def plot_comparison(data: List[PlotResult]):
     # Plot dual-axis bars: left axis for Value, right axis for Waste

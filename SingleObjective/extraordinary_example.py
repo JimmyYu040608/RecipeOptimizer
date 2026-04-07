@@ -6,7 +6,7 @@ from src.solver import ProductionProblem
 OUTPUT_DIR = "./images/soo"
 
 def main():
-    # Load from data.json for all possible recipes, items, etc in Satisfactory
+    # Load from data JSON file for all possible recipes, items, etc in Satisfactory
     recipes = load_recipes()
 
     # with open('output.txt', 'w', encoding='utf-8') as f:
