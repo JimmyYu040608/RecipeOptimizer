@@ -1,6 +1,7 @@
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from collections import deque
 from graphviz import Digraph
+from PIL import Image, ImageDraw, ImageFont
 
 from src.utils import custom_round_float
 from src.recipe import Product, Recipe
@@ -252,7 +253,74 @@ class ProductionGraph:
                         print(f"[{i}] -> [{dst_idx}]: {edge.product} ({edge.provide}/{edge.consume})")
     
     
-    def visualize(self, save_path, title):
+    def _legend_rows(self, stats: Optional[Dict[str, object]] = None):
+        """ Build legend rows to be overlaid on PNG """
+        rows = []
+        stats = stats or {}
+        for key, value in stats.items():
+            rows.append((str(key), str(value), (0, 0, 0), (0, 0, 0)))
+        rows.append(("Blue", "Input flow", (0, 0, 255), (0, 0, 0)))
+        rows.append(("Green", "Output flow", (0, 128, 0), (0, 0, 0)))
+        rows.append(("Red", "Waste flow", (255, 0, 0), (0, 0, 0)))
+        return rows
+
+
+    def _draw_legend_on_png(self, image_path: str, stats: Optional[Dict[str, object]] = None):
+        """ Draw a title-less legend box at fixed bottom-right of the output image """
+
+        rows = self._legend_rows(stats)
+        if not rows:
+            return
+
+        with Image.open(image_path).convert("RGBA") as img:
+            draw = ImageDraw.Draw(img)
+            try:
+                font = ImageFont.truetype("arial.ttf", 24)
+            except OSError:
+                font = ImageFont.load_default()
+
+            cell_pad_x = 14
+            cell_pad_y = 8
+            margin = 24
+            col_gap = 22
+
+            left_col_w = 0
+            right_col_w = 0
+            row_h = 0
+            for left_text, right_text, _, _ in rows:
+                left_bb = draw.textbbox((0, 0), left_text, font=font)
+                right_bb = draw.textbbox((0, 0), right_text, font=font)
+                left_col_w = max(left_col_w, left_bb[2] - left_bb[0])
+                right_col_w = max(right_col_w, right_bb[2] - right_bb[0])
+                row_h = max(row_h, left_bb[3] - left_bb[1], right_bb[3] - right_bb[1])
+
+            table_w = (cell_pad_x * 4) + left_col_w + right_col_w + col_gap
+            table_h = len(rows) * (row_h + (cell_pad_y * 2))
+
+            x1 = img.width - margin
+            y0 = img.height - margin - table_h
+            x0 = x1 - table_w
+            y1 = y0 + table_h
+
+            draw.rectangle((x0, y0, x1, y1), fill=(255, 255, 255, 235), outline=(0, 0, 0, 255), width=2)
+            split_x = x0 + (cell_pad_x * 2) + left_col_w + (col_gap // 2)
+            draw.line((split_x, y0, split_x, y1), fill=(0, 0, 0, 255), width=1)
+
+            current_y = y0
+            for i, (left_text, right_text, left_color, right_color) in enumerate(rows):
+                if i > 0:
+                    draw.line((x0, current_y, x1, current_y), fill=(0, 0, 0, 255), width=1)
+                left_x = x0 + cell_pad_x
+                right_x = split_x + (col_gap // 2) + cell_pad_x
+                text_y = current_y + cell_pad_y
+                draw.text((left_x, text_y), left_text, font=font, fill=left_color)
+                draw.text((right_x, text_y), right_text, font=font, fill=right_color)
+                current_y += row_h + (cell_pad_y * 2)
+
+            img.save(image_path)
+
+
+    def visualize(self, save_path, title, stats: Optional[Dict[str, object]] = None):
         """ Visualize the graph with graphviz """
         # Validate that the graph is created
         if not self.vertices:
@@ -292,8 +360,9 @@ class ProductionGraph:
                     color = 'blue'
                 for edge in edges:
                     dot.edge(str(i), str(dst_idx), label=f"{edge.product} ({edge.provide}/{edge.consume})", color=color, fontcolor=color)
-                
+
         # Render the graph
-        dot.render(save_path, format='png', cleanup=True)
+        rendered_path = dot.render(save_path, format='png', cleanup=True)
+        self._draw_legend_on_png(rendered_path, stats)
         print(f"Graph visualization saved as {save_path}")
         # dot.view()

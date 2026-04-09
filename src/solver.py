@@ -407,16 +407,17 @@ class ProductionProblem:
         # Create and read graph if not already done
         if not self.graph.vertices:
             self.create_graph()
-        
-        # Sum all the scores contributed by different products
-        total_score = sum(score * self.result_output_count.get(product.name, 0) for product, score in self.outputs.items())
-        total_score = custom_round_float(total_score)
-        # Sum all the waste counts
-        total_waste = sum(self.result_waste_count.values())
-        total_waste = custom_round_float(total_waste)
-        # Edit title to display important metrics as well
+
+        total_score = custom_round_float(self.result_output_value)
+        total_waste = custom_round_float(self.result_waste_value)
         title = f"{title} (Product Value: {total_score}, Wasted: {total_waste} unit/min)"
-        self.graph.visualize(save_path, title)
+        
+        # Prepare stats to be displayed on dedicated legend panel
+        stats = {
+            "Product Value": total_score,
+            "Wasted": f"{total_waste} unit/min",
+        }
+        self.graph.visualize(save_path, title, stats=stats)
     
     
     def get_value(self):
