@@ -118,8 +118,8 @@ class ProductionProblem:
         unnecessary_inputs = [p for p in self.inputs.keys() if p not in needed_products]
         self.inputs = {p: rate for p, rate in self.inputs.items() if p in needed_products}
         
-        # Announce reduction results
-        print(f"Reducing problem: removed {len(unnecessary_inputs)} unnecessary inputs and {len(unnecessary_recipes)} recipes.")
+        # DEBUG: Announce reduction results
+        # print(f"Reducing problem: removed {len(unnecessary_inputs)} unnecessary inputs and {len(unnecessary_recipes)} recipes.")
     
     
     def _single_obj_solve(self):
@@ -358,7 +358,7 @@ class ProductionProblem:
         # Do _single_obj_solve() for obj_mode type being SINGLE
         if ObjMethods.mode_type(self.obj_method) == MethodTypes.SINGLE:
             self._single_obj_solve()
-    
+
     
     def read_graph(self):
         """ Retrieve target product counts and waste counts by reading the graph result directly, saving efforts for extra processing in solver """

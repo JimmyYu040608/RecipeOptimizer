@@ -44,49 +44,71 @@ class DemoRecipes:
 class DemoProblems:
     def demo_example(method: ObjMethods) -> ProductionProblem:
         """ Methods: Any options in ObjMethods """
-        
+        # Load recipes from demo data
         recipes = DemoRecipes.get_demo_recipes()
+        # Input materials: Raw materials and premature products
         inputs = {
             DemoItems.iron_ingot: 120,
             DemoItems.copper_ingot: 60
             
         }
+        # Output materials with scores
         output_scores = {
             DemoItems.reinforced_iron_plate: 1000,
             DemoItems.copper_wire: 20
         }
+        # Problem formation
         problem = ProductionProblem(recipes, inputs, output_scores, method)
         return problem
     
     def complex_example(method: ObjMethods) -> ProductionProblem:
         """ Methods: Any options in ObjMethods """
-
+        # Load real recipes from data JSON file
         recipes = load_recipes()
-
+        # Input materials: Raw materials and premature products
         inputs = {
             "Crude Oil": 300,
             "Water": 800,
             "Coal": 533.33,
             "Sulfur": 533.33,
         }
+        # Output materials: Medium-sized products
         inputs = {Product(k, get_item_sink_pt(k)): v for k, v in inputs.items()}
-
         output_scores = {
             "Fuel": 600,
             "Turbofuel": 2000,
         }
         output_scores = {Product(k, get_item_sink_pt(k)): v for k, v in output_scores.items()}
+        # Problem formation
+        problem = ProductionProblem(recipes, inputs, output_scores, method)
+        return problem
 
+    def single_large_example(method: ObjMethods) -> ProductionProblem:
+        """ Methods: Any options in ObjMethods """
+        # Load real recipes from data JSON file
+        recipes = load_recipes()
+        # Input materials: Raw materials and premature products
+        inputs = {
+            "Iron Ore": 1000,
+            "Copper Ore": 800,
+            "Coal": 900,
+            "Crude Oil": 500
+        }
+        inputs = {Product(k, get_item_sink_pt(k)): v for k, v in inputs.items()}
+        # Output materials: Single big product (ultimate game mission items)
+        output_scores = {
+            "Modular Engine": 1000
+        }
+        output_scores = {Product(k, get_item_sink_pt(k)): v for k, v in output_scores.items()}
+        # Problem formation
         problem = ProductionProblem(recipes, inputs, output_scores, method)
         return problem
     
     def example_5(method: ObjMethods) -> ProductionProblem:
         """ Medium example with around 5 major outputs and around 5 inputs """
-        
         # Load real recipes from data JSON file
         recipes = load_recipes()
-        
-        # 5 Input materials: Raw materials and premature products
+        # Input materials: Raw materials and premature products
         inputs = {
             "Iron Ore": 2000,
             "Copper Ore": 1000,
@@ -97,8 +119,7 @@ class DemoProblems:
             "Crude Oil": 100,
         }
         inputs = {Product(k, get_item_sink_pt(k)): v for k, v in inputs.items()}
-        
-        # 5 Output materials: Big/completed products (target production items)
+        # Output materials: 5 Big products (target production items)
         output_scores = {
             "Smart Plating": 520,
             "Versatile Framework": 1176,
@@ -107,7 +128,7 @@ class DemoProblems:
             "Adaptive Control Unit": 76368,
         }
         output_scores = {Product(k, get_item_sink_pt(k)): v for k, v in output_scores.items()}
-        
+        # Problem formation
         problem = ProductionProblem(recipes, inputs, output_scores, method)
         return problem
     
@@ -115,9 +136,7 @@ class DemoProblems:
         """ Large example with around 12 major outputs and around 12 inputs """
         # Load real recipes from data JSON file
         recipes = load_recipes()
-        
         # Input materials: Raw materials and premature products
-        # 10% of total resource nodes
         inputs = {
             "Iron Ore": 9200,
             "Copper Ore": 3600,
@@ -135,8 +154,7 @@ class DemoProblems:
             "Uranium": 200,
         }
         inputs = {Product(k, get_item_sink_pt(k)): v for k, v in inputs.items()}
-        
-        # 12 Output materials: Big/completed products (target production items)
+        # Output materials: 12 Big products (ultimate game mission items)
         output_scores = {
             "Smart Plating": 520,
             "Versatile Framework": 1176,

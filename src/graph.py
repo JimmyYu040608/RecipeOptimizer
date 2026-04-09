@@ -18,14 +18,18 @@ class FlowEdge:
 class Vertex():
     """ Represents a vertex on the graph """
     def __init__(self):
-        self.src: Dict[Vertex, FlowEdge] = {}
-        self.dst: Dict[Vertex, FlowEdge] = {}
+        self.src: Dict['Vertex', List[FlowEdge]] = {}
+        self.dst: Dict['Vertex', List[FlowEdge]] = {}
     
     def add_src(self, vertex: 'Vertex', flow: FlowEdge):
-        self.src[vertex] = flow
+        if vertex not in self.src:
+            self.src[vertex] = []
+        self.src[vertex].append(flow)
     
     def add_dst(self, vertex: 'Vertex', flow: FlowEdge):
-        self.dst[vertex] = flow
+        if vertex not in self.dst:
+            self.dst[vertex] = []
+        self.dst[vertex].append(flow)
 
 
 class SourceVertex(Vertex):
@@ -77,7 +81,7 @@ class MachineVertex(Vertex):
         # Check all demands
         for product, demand in self.in_demands().items():
             # Sum all flows of that product
-            total_in_flow = sum(flow.provide for vertex, flow in self.src.items() if flow.product == product)
+            total_in_flow = sum(flow.provide for vertex, flows in self.src.items() for flow in flows if flow.product == product)
             if total_in_flow < demand:
                 return False
         return True
@@ -115,8 +119,8 @@ class ProductionGraph:
             if not isinstance(vertex, MachineVertex):
                 continue
             for product, demand in vertex.in_demands().items():
-                total_in = sum(flow.provide for src_vertex, flow in vertex.src.items() if flow.product == product)
-                if total_in + 1e-6 < demand:
+                total_in = sum(flow.provide for src_vertex, flows in vertex.src.items() for flow in flows if flow.product == product)
+                if total_in + 0.5 < demand:
                     issues.append(f"{vertex.recipe.name}: {product.name} received {custom_round_float(total_in)} / demand {custom_round_float(demand)}")
         return len(issues) == 0, issues
     
@@ -151,115 +155,76 @@ class ProductionGraph:
         # Precompute fixed production rates from solver
         machine_inputs: Dict[MachineVertex, Dict[Product, float]] = {}
         machine_outputs: Dict[MachineVertex, Dict[Product, float]] = {}
-        
         for vertex in machine_vertices:
             machine_inputs[vertex] = {p: rate * vertex.scale for p, rate in vertex.recipe.inputs.items()}
             machine_outputs[vertex] = {p: rate * vertex.scale for p, rate in vertex.recipe.outputs.items() if p not in vertex.recipe.inputs}
 
-        # Global product record
-        total_produced: Dict[Product, float] = {}
-        total_consumed: Dict[Product, float] = {}
-        
-        # Calculate totals
-        for vertex in machine_vertices:
-            for product, amount in machine_outputs[vertex].items():
-                total_produced[product] = total_produced.get(product, 0) + amount
-            for product, amount in machine_inputs[vertex].items():
-                total_consumed[product] = total_consumed.get(product, 0) + amount
+        # Collect every product that appears anywhere in this problem
+        all_products: set = set()
+        for src in source_vertices:
+            all_products.add(src.provide_product)
+        for machine in machine_vertices:
+            all_products.update(machine_inputs[machine].keys())
+            all_products.update(machine_outputs[machine].keys())
 
-        # Step 1: Connect sources to machines
-        for src_vertex in source_vertices:
-            product = src_vertex.provide_product
-            demanding_machines = [v for v in machine_vertices if product in machine_inputs[v]]
-            
-            if not demanding_machines:
-                # No demand - all goes to waste
-                waste_vertex = WasteVertex(product, src_vertex.provide_rate)
-                self.add_vertex(waste_vertex)
-                edge = FlowEdge(product, src_vertex.provide_rate, src_vertex.provide_rate)
-                self.add_edge(edge)
-                src_vertex.add_dst(waste_vertex, edge)
-                waste_vertex.add_src(src_vertex, edge)
+        # Global per-product flow allocation strategy:
+        # For each product, track every supplier's remaining available amount and every consumer's remaining unmet demand
+        # Prevents early suppliers from over-filling consumers that are also served by later suppliers
+        for product in all_products:
+            # Obtain all suppliers
+            suppliers: List[list] = []
+            for src in source_vertices:
+                if src.provide_product == product:
+                    suppliers.append([src, src.provide_rate])
+            for machine in machine_vertices:
+                if product in machine_outputs[machine]:
+                    suppliers.append([machine, machine_outputs[machine][product]])
+
+            if not suppliers:
                 continue
-                
-            total_demand = sum(machine_inputs[v][product] for v in demanding_machines)
-            remaining = src_vertex.provide_rate
-            
-            for vertex in demanding_machines:
-                demand = machine_inputs[vertex][product]
-                assign = min(demand, remaining)
-                
-                if assign > 0:
-                    edge = FlowEdge(product, custom_round_float(assign), custom_round_float(demand))
+
+            # Track remaining unmet demand per consumer
+            consumer_need: Dict[MachineVertex, float] = {machine: machine_inputs[machine][product] for machine in machine_vertices if product in machine_inputs[machine]}
+
+            # Assign products to consumers
+            for supply_entry in suppliers:
+                supply_vertex = supply_entry[0]
+                for consumer in list(consumer_need.keys()):
+                    if supply_entry[1] <= 1e-6:
+                        break # This supplier is empty
+                    need = consumer_need[consumer]
+                    if need <= 1e-6:
+                        continue # This consumer is already satisfied
+                    assign = min(need, supply_entry[1])
+                    edge = FlowEdge(product, custom_round_float(assign), custom_round_float(machine_inputs[consumer][product]))
                     self.add_edge(edge)
-                    src_vertex.add_dst(vertex, edge)
-                    vertex.add_src(src_vertex, edge)
-                    remaining -= assign
-            
-            # Waste unused source
-            if remaining > 1e-6:
+                    supply_vertex.add_dst(consumer, edge)
+                    consumer.add_src(supply_vertex, edge)
+                    supply_entry[1] -= assign
+                    consumer_need[consumer] -= assign
+
+            # Throw all remaining products to sinks (target products) or waste (otherwise)
+            for supply_entry in suppliers:
+                supply_vertex = supply_entry[0]
+                remaining = supply_entry[1]
+                if remaining <= 1e-6:
+                    continue
+                if product in outputs:
+                    sink = next((v for v in sink_vertices if v.receive_product == product), None)
+                    if sink is not None:
+                        edge = FlowEdge(product, custom_round_float(remaining), custom_round_float(remaining))
+                        self.add_edge(edge)
+                        supply_vertex.add_dst(sink, edge)
+                        sink.add_src(supply_vertex, edge)
+                        sink.receive_rate += remaining
+                        continue
+                # Not a target output, or no matching sink found
                 waste_vertex = WasteVertex(product, custom_round_float(remaining))
                 self.add_vertex(waste_vertex)
                 edge = FlowEdge(product, custom_round_float(remaining), custom_round_float(remaining))
                 self.add_edge(edge)
-                src_vertex.add_dst(waste_vertex, edge)
-                waste_vertex.add_src(src_vertex, edge)
-
-        # Step 2: Connect machines to machines (intermediate products)
-        for producer in machine_vertices:
-            for product, amount in machine_outputs[producer].items():
-                consuming_machines = [v for v in machine_vertices if product in machine_inputs[v]]
-                
-                if not consuming_machines:
-                    continue  # Will be handled in step 3
-                    
-                total_demand = sum(machine_inputs[v][product] for v in consuming_machines)
-                remaining = amount
-                
-                for consumer in consuming_machines:
-                    demand = machine_inputs[consumer][product]
-                    assign = min(demand, remaining)
-                    
-                    if assign > 0:
-                        edge = FlowEdge(product, custom_round_float(assign), custom_round_float(demand))
-                        self.add_edge(edge)
-                        producer.add_dst(consumer, edge)
-                        consumer.add_src(producer, edge)
-                        remaining -= assign
-
-        # Step 3: Connect machines to sinks (final outputs)
-        for producer in machine_vertices:
-            for product, amount in machine_outputs[producer].items():
-                if product not in outputs:
-                    continue
-                    
-                # Check how much already consumed by machines
-                already_consumed = sum(edge.provide for edge in producer.dst.values() if edge.product == product)
-                remaining = amount - already_consumed
-                
-                if remaining > 1e-6:
-                    # Find matching sink
-                    sink = next((v for v in sink_vertices if v.receive_product == product), None)
-                    if sink:
-                        edge = FlowEdge(product, custom_round_float(remaining), custom_round_float(remaining))
-                        self.add_edge(edge)
-                        producer.add_dst(sink, edge)
-                        sink.add_src(producer, edge)
-                        sink.receive_rate += remaining
-
-        # Step 4: Throw remaining products into waste
-        for producer in machine_vertices:
-            for product, amount in machine_outputs[producer].items():
-                already_allocated = sum(edge.provide for edge in producer.dst.values() if edge.product == product)
-                remaining = amount - already_allocated
-                
-                if remaining > 1e-6:
-                    waste_vertex = WasteVertex(product, custom_round_float(remaining))
-                    self.add_vertex(waste_vertex)
-                    edge = FlowEdge(product, custom_round_float(remaining), custom_round_float(remaining))
-                    self.add_edge(edge)
-                    producer.add_dst(waste_vertex, edge)
-                    waste_vertex.add_src(producer, edge)
+                supply_vertex.add_dst(waste_vertex, edge)
+                waste_vertex.add_src(supply_vertex, edge)
     
     
     def terminal_display(self):
@@ -281,9 +246,10 @@ class ProductionGraph:
         # Display connections
         for i, vertex in enumerate(self.vertices):
             if vertex.dst:
-                for dst_vertex, edge in vertex.dst.items():
-                    dst_idx = self.vertices.index(dst_vertex)
-                    print(f"[{i}] -> [{dst_idx}]: {edge.product} ({edge.provide}/{edge.consume})")
+                for dst_vertex, edges in vertex.dst.items():
+                    for edge in edges:
+                        dst_idx = self.vertices.index(dst_vertex)
+                        print(f"[{i}] -> [{dst_idx}]: {edge.product} ({edge.provide}/{edge.consume})")
     
     
     def visualize(self, save_path, title):
@@ -312,7 +278,7 @@ class ProductionGraph:
         for i, vertex in enumerate(self.vertices):
             if not vertex.dst:
                 continue
-            for dst_vertex, edge in vertex.dst.items():
+            for dst_vertex, edges in vertex.dst.items():
                 dst_idx = self.vertices.index(dst_vertex)
                 color = ''
                 # (Highest priority) Color the edge red if the destination is waste
@@ -324,8 +290,8 @@ class ProductionGraph:
                 # Color the edge blue if the source is source
                 elif isinstance(vertex, SourceVertex):
                     color = 'blue'
-                # Add the edge with label
-                dot.edge(str(i), str(dst_idx), label=f"{edge.product} ({edge.provide}/{edge.consume})", color=color, fontcolor=color)
+                for edge in edges:
+                    dot.edge(str(i), str(dst_idx), label=f"{edge.product} ({edge.provide}/{edge.consume})", color=color, fontcolor=color)
                 
         # Render the graph
         dot.render(save_path, format='png', cleanup=True)

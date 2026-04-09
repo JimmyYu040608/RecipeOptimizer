@@ -9,7 +9,18 @@ def small_example():
     run_evaluation(
         problem_factory=DemoProblems.complex_example,
         method_configs=config_small,
-        evaluation_name="Small Example evaluation",
+        evaluation_name="Small Example Evaluation",
+    )
+
+def single_large_example():
+    """Evaluate the single large example with shared dynamic evaluation pipeline."""
+    
+    config_large = default_method_configs("single_large_example", "Single Large Example")
+    
+    run_evaluation(
+        problem_factory=DemoProblems.single_large_example,
+        method_configs=config_large,
+        evaluation_name="Single Large Example Evaluation",
     )
 
 def eval_example_5():
@@ -20,7 +31,7 @@ def eval_example_5():
     run_evaluation(
         problem_factory=DemoProblems.example_5,
         method_configs=config_5,
-        evaluation_name="Example-5 evaluation",
+        evaluation_name="Example-5 Evaluation",
     )
 
 def eval_example_12():
@@ -31,12 +42,13 @@ def eval_example_12():
     run_evaluation(
         problem_factory=DemoProblems.example_12,
         method_configs=config_12,
-        evaluation_name="Example-12 evaluation",
+        evaluation_name="Example-12 Evaluation",
     )
     
 def main():
     """ Run all evaluations"""
     small_example()
+    single_large_example()
     eval_example_5()
     # eval_example_12()
 

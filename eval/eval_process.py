@@ -1,7 +1,7 @@
 import time
 import threading
 from dataclasses import dataclass
-from typing import Callable, List, Dict, Tuple
+from typing import Callable, List, Dict, Optional, Tuple
 
 from src.utils import ObjMethods
 from src.solver import ProductionProblem
@@ -14,6 +14,7 @@ class MethodConfig:
     graph_suffix: str
     graph_title: str
     print_graph: bool = False
+    timeout_sec: Optional[float] = 600  # wall-clock limit for the whole method, None = no limit
 
 
 def default_method_configs(example_key: str, example_title: str) -> List[MethodConfig]:
@@ -108,7 +109,21 @@ def run_evaluation(
     """Run the configured evaluation methods and print per-step and summary timing."""
     print(f"\n\nRunning {evaluation_name}...")
     overall_start = time.perf_counter()
-    results = [_run_method(problem_factory, config, output_dir) for config in method_configs]
+    results = []
+    for config in method_configs:
+        result_holder = []
+        worker = threading.Thread(
+            target=lambda c=config: result_holder.append(_run_method(problem_factory, c, output_dir)),
+            daemon=True,
+        )
+        worker.start()
+        worker.join(timeout=config.timeout_sec)  # None means wait indefinitely
+        if worker.is_alive():
+            elapsed = time.perf_counter() - overall_start
+            print(f"  [TIMEOUT] {config.label} exceeded {config.timeout_sec}s — skipping.")
+            results.append((config.label, config.timeout_sec, {}))
+        else:
+            results.append(result_holder[0])
 
     print("\nTiming summary:")
     for label, total_elapsed, step_timings in results:
