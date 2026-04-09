@@ -111,10 +111,15 @@ class ProductionProblem:
             find_needed_products(output_product)
         
         # Remove recipes that don't produce needed products
-        self.recipes = [r for r in self.recipes if any(r.product_net_rate(p) > 0 for p in needed_products)]
+        unnecessary_recipes = [r for r in self.recipes if all(r.product_net_rate(p) <= 0 for p in needed_products)]
+        self.recipes = [r for r in self.recipes if r not in unnecessary_recipes]
         
         # Remove inputs that aren't needed
+        unnecessary_inputs = [p for p in self.inputs.keys() if p not in needed_products]
         self.inputs = {p: rate for p, rate in self.inputs.items() if p in needed_products}
+        
+        # Announce reduction results
+        print(f"Reducing problem: removed {len(unnecessary_inputs)} unnecessary inputs and {len(unnecessary_recipes)} recipes.")
     
     
     def _single_obj_solve(self):
