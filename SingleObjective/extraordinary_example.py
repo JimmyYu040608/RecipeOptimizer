@@ -49,19 +49,19 @@ def main():
     save_path = f'{OUTPUT_DIR}/extraordinary_graph_produce'
     problem_produce.optimize()
     problem_produce.create_graph()
-    problem_produce.print_graph()
+    # problem_produce.print_graph()
     problem_produce.visualize_graph(save_path, 'Extraordinary Graph (Maximize Production)')
     # Heuristics of minimizing waste
     save_path = f'{OUTPUT_DIR}/extraordinary_graph_waste'
     problem_waste.optimize()
     problem_waste.create_graph()
-    problem_waste.print_graph()
+    # problem_waste.print_graph()
     problem_waste.visualize_graph(save_path, 'Extraordinary Graph (Minimize Waste)')
     # Heuristics of maximizing target production with penalty of waste
     save_path = f'{OUTPUT_DIR}/extraordinary_graph_produce_and_waste'
     problem_PnW.optimize()
     problem_PnW.create_graph()
-    problem_PnW.print_graph()
+    # problem_PnW.print_graph()
     problem_PnW.visualize_graph(save_path, 'Extraordinary Graph (Production Penalized with Waste)')
 
 if __name__ == "__main__":

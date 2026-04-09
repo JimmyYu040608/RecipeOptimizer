@@ -60,17 +60,23 @@ class DemoProblems:
     
     def complex_example(method: ObjMethods) -> ProductionProblem:
         """ Methods: Any options in ObjMethods """
-        
-        recipes = DemoRecipes.get_demo_recipes()
+
+        recipes = load_recipes()
+
         inputs = {
-            DemoItems.iron_ingot: 120,
-            DemoItems.copper_ingot: 60
-            
+            "Crude Oil": 300,
+            "Water": 800,
+            "Coal": 533.33,
+            "Sulfur": 533.33,
         }
+        inputs = {Product(k, get_item_sink_pt(k)): v for k, v in inputs.items()}
+
         output_scores = {
-            DemoItems.reinforced_iron_plate: 1000,
-            DemoItems.copper_wire: 20
+            "Fuel": 600,
+            "Turbofuel": 2000,
         }
+        output_scores = {Product(k, get_item_sink_pt(k)): v for k, v in output_scores.items()}
+
         problem = ProductionProblem(recipes, inputs, output_scores, method)
         return problem
     
@@ -82,10 +88,10 @@ class DemoProblems:
         
         # 5 Input materials: Raw materials and premature products
         inputs = {
-            "Iron Ore": 300,
-            "Copper Ore": 50,
-            "Coal": 250,
-            "Limestone": 50,
+            "Iron Ore": 2000,
+            "Copper Ore": 1000,
+            "Coal": 1000,
+            "Limestone": 500,
             "Wood": 180,
             "Water": 600,
             "Crude Oil": 100,

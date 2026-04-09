@@ -1,6 +1,17 @@
 from src.demo_data import DemoProblems
 from eval.eval_process import default_method_configs, run_evaluation
 
+def small_example():
+    """Evaluate the small example (the real tag in DemoProblems is complex_example) with shared dynamic evaluation pipeline."""
+    
+    config_small = default_method_configs("small_example", "Small Example")
+    
+    run_evaluation(
+        problem_factory=DemoProblems.complex_example,
+        method_configs=config_small,
+        evaluation_name="Small Example evaluation",
+    )
+
 def eval_example_5():
     """Evaluate example 5 with shared dynamic evaluation pipeline."""
     
@@ -25,6 +36,7 @@ def eval_example_12():
     
 def main():
     """ Run all evaluations"""
+    small_example()
     eval_example_5()
     # eval_example_12()
 

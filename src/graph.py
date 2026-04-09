@@ -105,6 +105,21 @@ class ProductionGraph:
 
     def add_edge(self, edge: FlowEdge):
         self.edges.append(edge)
+
+
+    def validate_machine_satisfaction(self):
+        """ Validate that all machine vertices receive enough inflow for every demanded product """
+        issues = []
+        # Check all machine-demand pairs
+        for vertex in self.vertices:
+            if not isinstance(vertex, MachineVertex):
+                continue
+            for product, demand in vertex.in_demands().items():
+                total_in = sum(flow.provide for src_vertex, flow in vertex.src.items() if flow.product == product)
+                if total_in + 1e-6 < demand:
+                    issues.append(f"{vertex.recipe.name}: {product.name} received {custom_round_float(total_in)} / demand {custom_round_float(demand)}")
+        return len(issues) == 0, issues
+    
     
     def create(self, recipe_count_pairs: List[Tuple[Recipe, int]], inputs: Dict[Product, float], outputs: Dict[Product, float]):
         """ Create the production graph from recipes and their scale """
@@ -172,11 +187,10 @@ class ProductionGraph:
             
             for vertex in demanding_machines:
                 demand = machine_inputs[vertex][product]
-                assign = min(demand, remaining * (demand / total_demand) if total_demand > 0 else 0)
-                assign = custom_round_float(assign)
+                assign = min(demand, remaining)
                 
                 if assign > 0:
-                    edge = FlowEdge(product, assign, demand)
+                    edge = FlowEdge(product, custom_round_float(assign), custom_round_float(demand))
                     self.add_edge(edge)
                     src_vertex.add_dst(vertex, edge)
                     vertex.add_src(src_vertex, edge)
@@ -204,11 +218,10 @@ class ProductionGraph:
                 
                 for consumer in consuming_machines:
                     demand = machine_inputs[consumer][product]
-                    assign = min(demand, remaining * (demand / total_demand) if total_demand > 0 else 0)
-                    assign = custom_round_float(assign)
+                    assign = min(demand, remaining)
                     
                     if assign > 0:
-                        edge = FlowEdge(product, assign, demand)
+                        edge = FlowEdge(product, custom_round_float(assign), custom_round_float(demand))
                         self.add_edge(edge)
                         producer.add_dst(consumer, edge)
                         consumer.add_src(producer, edge)
@@ -228,8 +241,7 @@ class ProductionGraph:
                     # Find matching sink
                     sink = next((v for v in sink_vertices if v.receive_product == product), None)
                     if sink:
-                        remaining = custom_round_float(remaining)
-                        edge = FlowEdge(product, remaining, remaining)
+                        edge = FlowEdge(product, custom_round_float(remaining), custom_round_float(remaining))
                         self.add_edge(edge)
                         producer.add_dst(sink, edge)
                         sink.add_src(producer, edge)

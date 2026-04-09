@@ -24,7 +24,6 @@ class ProductionProblem:
         # Initialize other optimization variables
         self.recipe_vars = {} # {"recipe_name": RecipeVariable}
         self.objective = None
-        self.leftover_vars = {} # {"product_name": leftover_amount_var}
         # Initialize output variables
         self.opt_recipe_count = {} # {"recipe_name": (Recipe, int)}
         self.graph = ProductionGraph()
@@ -184,31 +183,32 @@ class ProductionProblem:
     def _set_obj_waste(self):
         """ Objective 2: Minimize total waste """
         self.objective = self.solver.Objective()
-        # Minimize total leftover amounts of all non-target products directly
-        for product_name, leftover_var in self.leftover_vars.items():
-            self.objective.SetCoefficient(leftover_var, 1)
-        # Add a small recipe cost to break ties and discourage unnecessary loops
         for recipe in self.recipes:
-            self.objective.SetCoefficient(self.recipe_vars[recipe.name], self._recipe_cost)
+            # Calculate waste contribution (positive net production of non-target products weighted by sink points)
+            waste_contribution = sum([recipe.product_net_rate(product) for product in recipe.products_used() if product not in self.outputs])
+            # Penalize alternate recipes slightly to prioritize original recipes for simplicity
+            if recipe.alternate:
+                waste_contribution += self._recipe_cost
+            self.objective.SetCoefficient(self.recipe_vars[recipe.name], waste_contribution)
         self.objective.SetMinimization()  # Minimize waste directly
     
     
     def _set_obj_produce_and_waste(self):
-        """ Objective 3: Maximize total scores given by target products with a penalty of waste """
+        """ Objective 3 (flawed): Maximize total scores given by target products with a penalty of waste """
         self.objective = self.solver.Objective()
         waste_penalty = 10  # Penalty weight for waste <-- quite arbitrary
         for recipe in self.recipes:
             # Production contribution (same as _set_obj_produce)
             recipe_contribution = sum([recipe.product_net_rate(c) * s for c, s in self.outputs.items()])
             recipe_contribution -= self.get_recipe_cost()
+            # Waste penalty (weighted by sink points)
+            waste_contribution = sum([recipe.product_net_rate(product) for product in recipe.products_used() if product not in self.outputs and product not in self.inputs])
+            recipe_contribution -= waste_penalty * waste_contribution
             # Penalize alternate recipes slightly to prioritize original recipes for simplicity
             if recipe.alternate:
                 recipe_contribution -= 0.001
             recipe_contribution = -recipe_contribution # To be turned into minimization problem
             self.objective.SetCoefficient(self.recipe_vars[recipe.name], recipe_contribution)
-        # Waste penalty on leftover variables
-        for product_name, leftover_var in self.leftover_vars.items():
-            self.objective.SetCoefficient(leftover_var, waste_penalty)
         self.objective.SetMinimization()
     
     
@@ -245,16 +245,15 @@ class ProductionProblem:
                 recipe_contribution -= self.get_recipe_cost()
                 recipe_contribution = -recipe_contribution # To be turned into minimization problem
                 recipe_contribution = normalize(recipe_contribution, f1_best, f1_worst)
-                # Weighted combination (maximize value part)
-                weighted_contribution = w1 * recipe_contribution
+                # Calculate waste contribution (positive production for non-target products weighted by sink points)
+                waste_contribution = sum([recipe.product_net_rate(product) for product in recipe.products_used() if product not in self.outputs])
+                waste_contribution = normalize(waste_contribution, f2_best, f2_worst)
+                # Weighted combination (maximize value, minimize waste)
+                weighted_contribution = w1 * recipe_contribution + w2 * waste_contribution
                 # Penalize alternate recipes slightly to prioritize original recipes for simplicity
                 if recipe.alternate:
                     weighted_contribution -= 0.001
                 self.objective.SetCoefficient(self.recipe_vars[recipe.name], weighted_contribution)
-            # Add weighted waste part from explicit leftover variables
-            waste_norm_scale = 1 / (abs(f2_worst - f2_best) + 1e-10)
-            for product_name, leftover_var in self.leftover_vars.items():
-                self.objective.SetCoefficient(leftover_var, w2 * waste_norm_scale)
             self.objective.SetMinimization()
             # Different from single objective, solve for now to locate different weight combinations
             self.solver.Solve()
@@ -308,7 +307,7 @@ class ProductionProblem:
         # Define decision variable: How can time should each recipe be executed
         # m1, m2, m3... for multiplication of r1, r2, r3...
         # Integer variable bounded from 0 to RECIPE_MAX, with name of the recipes
-        # List of recipe counts, if there are 100 different recipes, here creates 100 variables to be optimized
+        # List of recipe counts, if there are 100 available recipes, here creates 100 variables to be optimized
         self.recipe_vars = dict([(r.name, self.solver.IntVar(0, self.get_recipe_max(), r.name)) for r in self.recipes]) # {str: IntVar}
         
         # DEBUG
@@ -322,22 +321,7 @@ class ProductionProblem:
             # Add the contribution of each recipe
             for recipe in self.recipes:
                 ct.SetCoefficient(self.recipe_vars[recipe.name], recipe.product_net_rate(product))
-
-        # Build leftover variables for all non-target products from mass balance
-        # leftover(product) = input(product) + sum(recipe_count * net_rate(product))
-        self.leftover_vars = {}
-        for product in products:
-            if product in self.outputs:
-                continue
-            input_amount = self.inputs[product] if product in self.inputs else 0
-            leftover_var = self.solver.NumVar(0, self.get_product_max(), f"leftover_{product.name}")
-            self.leftover_vars[product.name] = leftover_var
-            # Equality form: sum(net_rate * x) - leftover = -input_amount
-            ct_leftover = self.solver.RowConstraint(-input_amount, -input_amount, f"leftover_balance_{product.name}")
-            for recipe in self.recipes:
-                ct_leftover.SetCoefficient(self.recipe_vars[recipe.name], recipe.product_net_rate(product))
-            ct_leftover.SetCoefficient(leftover_var, -1)
-
+                
         # Create objective function
         if self.obj_method == ObjMethods.S_VALUE:
             self._set_obj_produce()
@@ -357,19 +341,15 @@ class ProductionProblem:
     
     def read_graph(self):
         """ Retrieve target product counts and waste counts by reading the graph result directly, saving efforts for extra processing in solver """
-        # Reset records to avoid residual values on repeated calls
-        self.result_output_count = {}
-        self.result_waste_count = {}
         # Count each output/waste
         for vertex in self.graph.vertices:
             if isinstance(vertex, SinkVertex):
                 self.result_output_count[vertex.receive_product.name] = vertex.receive_rate
             elif isinstance(vertex, WasteVertex):
-                self.result_waste_count[vertex.wasted_product.name] = self.result_waste_count.get(vertex.wasted_product.name, 0) + vertex.wasted_rate
-        # Calculate total output value according to each product's score
+                self.result_waste_count[vertex.wasted_product.name] = vertex.wasted_rate
+        # Calculate total output and waste values according to each product's value and sink points
         self.result_output_value = sum(self.result_output_count.get(product.name, 0) * score for product, score in self.outputs.items())
-        # Calculate total waste value according to total amount of wasted items
-        self.result_waste_value = sum(self.result_waste_count.values())
+        self.result_waste_value = sum(self.result_waste_count.get(product.name, 0) * product.sink_pt for product in self.inputs.keys() if product.name in self.result_waste_count)
     
     
     def create_graph(self):
@@ -380,15 +360,6 @@ class ProductionProblem:
         
         # Build the production graph topology
         self.graph.create(self.opt_recipe_count.values(), self.inputs, self.outputs)
-
-        # Validate machine inflow-demand consistency for debugging and safety
-        valid, issues = self.graph.validate_machine_satisfaction()
-        if not valid:
-            print(f"Warning: graph has {len(issues)} unsatisfied machine-demand entries.")
-            for detail in issues[:10]:
-                print(f"  - {detail}")
-            if len(issues) > 10:
-                print(f"  ... and {len(issues) - 10} more")
         
         # Read important data back to problem instance for convenience
         self.read_graph()

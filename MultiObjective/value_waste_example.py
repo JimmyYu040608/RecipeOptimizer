@@ -4,7 +4,7 @@ from src.demo_data import DemoProblems
 
 OUTPUT_DIR = './images/moo'
 
-def main():
+def demo_example():
     save_path = f'{OUTPUT_DIR}/value_waste_example'
     title = 'Value-Waste Tradeoff'
     
@@ -12,6 +12,20 @@ def main():
     problem.optimize()
     problem.create_graph()
     problem.visualize_graph(save_path, title)
+
+
+def complex_example():
+    save_path = f'{OUTPUT_DIR}/value_waste_complex_example'
+    title = 'Complex Value-Waste Tradeoff'
+    
+    problem = DemoProblems.complex_example(ObjMethods.M_VALUE_WASTE)
+    problem.optimize()
+    problem.create_graph()
+    problem.visualize_graph(save_path, title)
+
+def main():
+    demo_example()
+    complex_example()
 
 if __name__ == '__main__':
     main()
