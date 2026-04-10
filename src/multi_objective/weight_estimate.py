@@ -1,11 +1,11 @@
-""" A specialized Python script for estimating most suitable weights for different multi-objective optimization methods, not for doing the optimization itself """
+""" Helpers for estimating normalization parameters used by weighted-sum multi-objective optimization """
+
+from typing import Dict, List, Tuple, TypedDict
 
 from src.utils import ObjMethods
-from src.recipe import Recipe, Product
+from src.recipe import Product, Recipe
 from src.demo_data import DemoProblems
 from src.solver import ProductionProblem
-from src.graph import ProductionGraph, WasteVertex
-from typing import List, Dict, TypedDict
 
 
 class ProblemObj(TypedDict):
@@ -32,64 +32,101 @@ def normalize(f, f_best, f_worst):
     return normalize_min(f, f_best, f_worst)
 
 
-def ws_value_waste_norm_param(problem_obj: ProblemObj = None):
-    """ By conducting single-objective optimization on value and waste independently, return the normalized objectives for weighted sum method in multi-objective optimization """
-    # Two objectives: Maximize value and minimize waste
-    
-    
-    # f1: Minimize -value
-    f1_worst = 0 # Background knowledge: Worst case = No desired output product is produced
-    f1_problem = None
+def _build_problem(problem_obj: ProblemObj = None, obj_method: str = ObjMethods.S_VALUE) -> ProductionProblem:
+    """ Create a ProductionProblem from either an explicit problem object or the demo fallback """
     if problem_obj is None:
-        print("Value-Waste weight estimate: Used demo problem")
-        f1_problem = DemoProblems.demo_example(ObjMethods.S_VALUE)
-    else:
-        f1_problem = ProductionProblem(problem_obj['recipes'], problem_obj['inputs'], problem_obj['outputs'])
-    # Solve for best f1 value independently
-    f1_problem.optimize()
-    f1_problem.create_graph()
-    f1_best = f1_problem.get_value() # Background knowledge: Best case = Maximum value achieved by optimizing for value only
+        return DemoProblems.demo_example(obj_method)
+    return ProductionProblem(problem_obj['recipes'], problem_obj['inputs'], problem_obj['outputs'], obj_method)
+
+
+def _estimate_value_bounds(problem_obj: ProblemObj = None) -> Tuple[float, float]:
+    """ Return (best, worst) bounds for objective value """
+    f_problem = _build_problem(problem_obj, ObjMethods.S_VALUE)
+    f_problem.optimize()
+    f_problem.create_graph()
+    f_best = f_problem.get_value()
+    f_worst = 0 # Background knowledge: Best case = Maximum value achieved by optimizing for value only
+
+    return f_best, f_worst
+
+
+def _estimate_waste_bounds(problem_obj: ProblemObj = None) -> Tuple[float, float]:
+    """ Return (best, worst) bounds for waste amount """
     
-    
-    # f2: Minimize waste
-    f2_problem_worst = None
-    if problem_obj is None:
-        print("Value-Waste weight estimate: Used demo problem")
-        f2_problem_worst = DemoProblems.demo_example(ObjMethods.S_WASTE)
-    else:
-        f2_problem_worst = ProductionProblem(problem_obj['recipes'], problem_obj['inputs'], problem_obj['outputs'], ObjMethods.S_WASTE)
-        
-    f2_best = 0 # Background knowledge: Best case = No waste is left
-    
+    f_best = 0 # Background knowledge: Best case = No waste is left
+
     # Customize "deoptimize" procedure to get as much waste as possible
-    if not f2_problem_worst.validate():
+    f_problem_worst = _build_problem(problem_obj, ObjMethods.S_WASTE)
+
+    if not f_problem_worst.validate():
         raise ValueError("The problem is invalid")
-    f2_problem_worst.reduce()
-    products = list(set([c for recipe in f2_problem_worst.recipes for c in recipe.products_used()]))
+    f_problem_worst.reduce()
+    products = list(set([c for recipe in f_problem_worst.recipes for c in recipe.products_used()]))
     products.sort()
-    f2_problem_worst.recipe_vars = dict([(r.name, f2_problem_worst.solver.IntVar(0, f2_problem_worst.get_recipe_max(), r.name)) for r in f2_problem_worst.recipes])
+    f_problem_worst.recipe_vars = dict([
+        (r.name, f_problem_worst.solver.IntVar(0, f_problem_worst.get_recipe_max(), r.name))
+        for r in f_problem_worst.recipes
+    ])
     for product in products:
-        min_value = -f2_problem_worst.inputs[product] if product in f2_problem_worst.inputs else 0
-        ct = f2_problem_worst.solver.RowConstraint(min_value, f2_problem_worst.get_product_max(), product.name)
-        for recipe in f2_problem_worst.recipes:
-            ct.SetCoefficient(f2_problem_worst.recipe_vars[recipe.name], recipe.product_net_rate(product))
-    f2_problem_worst.objective = f2_problem_worst.solver.Objective()
-    for recipe in f2_problem_worst.recipes:
-        waste_contribution = sum([recipe.product_net_rate(product) for product in recipe.products_used() if product not in f2_problem_worst.outputs])
-        f2_problem_worst.objective.SetCoefficient(f2_problem_worst.recipe_vars[recipe.name], waste_contribution)
-    f2_problem_worst.objective.SetMaximization()
-    f2_problem_worst.solver.Solve()
-    for var in f2_problem_worst.recipe_vars.values():
+        min_value = -f_problem_worst.inputs[product] if product in f_problem_worst.inputs else 0
+        ct = f_problem_worst.solver.RowConstraint(min_value, f_problem_worst.get_product_max(), product.name)
+        for recipe in f_problem_worst.recipes:
+            ct.SetCoefficient(f_problem_worst.recipe_vars[recipe.name], recipe.product_net_rate(product))
+
+    f_problem_worst.objective = f_problem_worst.solver.Objective()
+    for recipe in f_problem_worst.recipes:
+        waste_contribution = sum([
+            recipe.product_net_rate(product)
+            for product in recipe.products_used()
+            if product not in f_problem_worst.outputs
+        ])
+        f_problem_worst.objective.SetCoefficient(f_problem_worst.recipe_vars[recipe.name], waste_contribution)
+    f_problem_worst.objective.SetMaximization()
+    f_problem_worst.solver.Solve()
+
+    for var in f_problem_worst.recipe_vars.values():
         if not var.solution_value().is_integer():
             raise ValueError("Non-integer solution value for recipe count")
-    for recipe in f2_problem_worst.recipes:
-        f2_problem_worst.opt_recipe_count[recipe.name] = (recipe, int(f2_problem_worst.recipe_vars[recipe.name].solution_value()))
-    # End of "deoptimize" procedure
-    
-    # Create graph to calculate actual waste
-    f2_problem_worst.create_graph()
-    f2_worst = f2_problem_worst.get_waste() # Background knowledge: Worst case = Maximum waste achieved by optimizing for waste 
-    
-    # DEBUG
-    # print(f"DEBUG: {f1_best}, {f1_worst}, {f2_best}, {f2_worst}")
-    return f1_best, f1_worst, f2_best, f2_worst
+    for recipe in f_problem_worst.recipes:
+        f_problem_worst.opt_recipe_count[recipe.name] = (recipe, int(f_problem_worst.recipe_vars[recipe.name].solution_value()))
+
+    f_problem_worst.create_graph()
+    f_worst = f_problem_worst.get_waste()
+    return f_best, f_worst
+
+
+def _estimate_power_bounds(problem_obj: ProblemObj = None) -> Tuple[float, float]:
+    """ Return (best, worst) bounds for power consumption """
+    f_best = 0 # Background knowledge: Best case = No recipe is used, thus no power is consumed
+    # Worst case = All recipes are used at their maximum capacity, thus power consumption is the sum of all recipe power consumptions multiplied by their max usage
+    if problem_obj is None:
+        p = _build_problem(problem_obj, ObjMethods.S_VALUE)
+        recipes = p.recipes
+        recipe_max = p.get_recipe_max()
+    else:
+        recipes = problem_obj['recipes']
+        recipe_max = ProductionProblem(problem_obj['recipes'], problem_obj['inputs'], problem_obj['outputs']).get_recipe_max()
+    f_worst = sum(recipe.power_consumption * recipe_max for recipe in recipes)
+    return f_best, f_worst
+
+
+def ws_norm_params(problem_obj: ProblemObj = None, objectives: List[str] = None) -> Dict[str, Tuple[float, float]]:
+    """ Generalized normalization parameter estimator for weighted-sum objectives
+    Supported objective keys: value, waste, power
+    Returns: {objective_name: (best, worst)}
+    """
+    # Default: maximizing value and minimizing waste
+    if objectives is None:
+        objectives = ['value', 'waste']
+
+    result: Dict[str, Tuple[float, float]] = {}
+    for objective in objectives:
+        if objective == 'value':
+            result['value'] = _estimate_value_bounds(problem_obj)
+        elif objective == 'waste':
+            result['waste'] = _estimate_waste_bounds(problem_obj)
+        elif objective == 'power':
+            result['power'] = _estimate_power_bounds(problem_obj)
+        else:
+            raise ValueError(f"Unsupported objective key: {objective}")
+    return result

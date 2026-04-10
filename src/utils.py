@@ -6,11 +6,14 @@ class ObjMethods:
     S_VALUE = 's_value'
     S_WASTE = 's_waste'
     S_VALUE_WASTE = 's_value_waste'
+    S_VALUE_POWER = 's_value_power'
+    S_VALUE_WASTE_POWER = 's_value_waste_power'
     M_VALUE_WASTE = 'm_value_waste'
+    M_VALUE_WASTE_POWER = 'm_value_waste_power'
     
     @staticmethod
     def mode_type(obj_method) -> MethodTypes:
-        if obj_method in (ObjMethods.S_VALUE, ObjMethods.S_WASTE, ObjMethods.S_VALUE_WASTE):
+        if obj_method in (ObjMethods.S_VALUE, ObjMethods.S_WASTE, ObjMethods.S_VALUE_WASTE, ObjMethods.S_VALUE_POWER, ObjMethods.S_VALUE_WASTE_POWER):
             return MethodTypes.SINGLE
         else:
             return MethodTypes.MULTIPLE

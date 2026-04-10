@@ -138,13 +138,14 @@ def load_recipes() -> List[Recipe]:
     item_data = data["items"] # For getting readable item names and sink points from their json name
     building_data = data["buildings"] # For getting readable building names from their json name
     recipe_data = data["recipes"]
+    # Power data is stored under building metadata in this dataset schema.
     building_cache = {
         building_id: Building(
             building_content["name"],
-            float(building_content.get("powerConsumption", 0.0)),
+            float(building_content.get("metadata", {}).get("powerConsumption", 0.0)),
         )
         for building_id, building_content in building_data.items()
-    }
+    } # To store different buildings which will be used in multiple recipes, not to repeatedly create identical Building instances
     
     # Iterate through each recipe in the "recipes" object
     for recipe_id, recipe_content in recipe_data.items():

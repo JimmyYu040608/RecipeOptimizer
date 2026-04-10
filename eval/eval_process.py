@@ -39,10 +39,28 @@ def default_method_configs(example_key: str, example_title: str) -> List[MethodC
             graph_title=f"{example_title}: Production Penalized with Waste",
         ),
         MethodConfig(
-            label="4. Optimizing for Production Value and Waste with Multi-Objective Optimization (Pareto Front)...",
+            label="4. Optimizing for Production Value with Power Penalty with Single Objective Function...",
+            objective_method=ObjMethods.S_VALUE_POWER,
+            graph_suffix=f"{example_key}_graph_s_value_power",
+            graph_title=f"{example_title}: Production Penalized with Power",
+        ),
+        MethodConfig(
+            label="5. Optimizing for Production Value with Waste and Power Penalty with Single Objective Function...",
+            objective_method=ObjMethods.S_VALUE_WASTE_POWER,
+            graph_suffix=f"{example_key}_graph_s_value_waste_power",
+            graph_title=f"{example_title}: Production Penalized with Waste and Power",
+        ),
+        MethodConfig(
+            label="6. Optimizing for Production Value and Waste with Multi-Objective Optimization (Pareto Front)...",
             objective_method=ObjMethods.M_VALUE_WASTE,
             graph_suffix=f"{example_key}_graph_m_value_waste",
             graph_title=f"{example_title}: Multi-Objective Optimization (Value and Waste)",
+        ),
+        MethodConfig(
+            label="7. Optimizing for Production Value, Waste, and Power with Multi-Objective Optimization (Pareto Front)...",
+            objective_method=ObjMethods.M_VALUE_WASTE_POWER,
+            graph_suffix=f"{example_key}_graph_m_value_waste_power",
+            graph_title=f"{example_title}: Multi-Objective Optimization (Value, Waste, and Power)",
         ),
     ]
 

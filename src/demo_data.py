@@ -1,6 +1,6 @@
 from typing import List
 from src.utils import ObjMethods
-from src.recipe import Recipe, Product, load_recipes, get_item_sink_pt
+from src.recipe import Building, Recipe, Product, load_recipes, get_item_sink_pt
 from src.solver import ProductionProblem
 
 class DemoItems:
@@ -16,24 +16,26 @@ class DemoItems:
         return [self.iron_ingot, self.copper_ingot, self.screw, self.iron_plate, self.reinforced_iron_plate, self.copper_wire]
 
 class DemoRecipes:
-    iron_screw = Recipe('Iron Screw', 'Constructor', True)
+    constructor = Building('Constructor', 4)
+
+    iron_screw = Recipe('Iron Screw', constructor, True)
     iron_screw.add_input(DemoItems.iron_ingot, 1)
     iron_screw.add_output(DemoItems.screw, 4)
     
-    copper_screw = Recipe('Copper Screw', 'Constructor', True)
+    copper_screw = Recipe('Copper Screw', constructor, True)
     copper_screw.add_input(DemoItems.copper_ingot, 1)
     copper_screw.add_output(DemoItems.screw, 4)
     
-    iron_plate = Recipe('Iron Plate', 'Constructor', False)
+    iron_plate = Recipe('Iron Plate', constructor, False)
     iron_plate.add_input(DemoItems.iron_ingot, 3)
     iron_plate.add_output(DemoItems.iron_plate, 2)
     
-    reinforced_iron_plate = Recipe('Reinforced Iron Plate', 'Constructor', False)
+    reinforced_iron_plate = Recipe('Reinforced Iron Plate', constructor, False)
     reinforced_iron_plate.add_input(DemoItems.iron_plate, 3)
     reinforced_iron_plate.add_input(DemoItems.screw, 8)
     reinforced_iron_plate.add_output(DemoItems.reinforced_iron_plate, 1)
     
-    copper_wire = Recipe('Copper Wire', 'Constructor', False)
+    copper_wire = Recipe('Copper Wire', constructor, False)
     copper_wire.add_input(DemoItems.copper_ingot, 2)
     copper_wire.add_output(DemoItems.copper_wire, 10)
     
