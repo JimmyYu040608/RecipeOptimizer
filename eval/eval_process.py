@@ -1,5 +1,6 @@
 import time
 import threading
+import os
 from dataclasses import dataclass
 from typing import Callable, List, Dict, Optional, Tuple
 
@@ -9,55 +10,75 @@ from src.solver import ProductionProblem
 
 @dataclass(frozen=True)
 class MethodConfig:
-    label: str
+    name: str
+    abbreviation: str
     objective_method: str
     graph_suffix: str
     graph_title: str
     print_graph: bool = False
-    timeout_sec: Optional[float] = 600  # wall-clock limit for the whole method, None = no limit
+    timeout_sec: Optional[float] = 600 # time limit for the whole method, None = no limit
+
+
+@dataclass(frozen=True)
+class MethodEvaluationResult:
+    method_name: str
+    method_abbreviation: str
+    objective_method: str
+    total_time_sec: float
+    value: float
+    waste: float
+    power: float
+    step_timings: Dict[str, float]
 
 
 def default_method_configs(example_key: str, example_title: str) -> List[MethodConfig]:
     """ Create standard method configurations for a given example """
     return [
         MethodConfig(
-            label="1. Optimizing for Maximum Production Value...",
+            name="Single Objective: Maximize Value",
+            abbreviation="S-V",
             objective_method=ObjMethods.S_VALUE,
             graph_suffix=f"{example_key}_graph_value",
             graph_title=f"{example_title}: Maximize Production Value",
         ),
         MethodConfig(
-            label="2. Optimizing for Minimum Waste...",
+            name="Single Objective: Minimize Waste",
+            abbreviation="S-W",
             objective_method=ObjMethods.S_WASTE,
             graph_suffix=f"{example_key}_graph_waste",
             graph_title=f"{example_title}: Minimize Waste",
         ),
         MethodConfig(
-            label="3. Optimizing for Production Value with Waste Penalty with Single Objective Function...",
+            name="Single Objective: Value with Waste Penalty",
+            abbreviation="S-VW",
             objective_method=ObjMethods.S_VALUE_WASTE,
             graph_suffix=f"{example_key}_graph_s_value_waste",
             graph_title=f"{example_title}: Production Penalized with Waste",
         ),
         MethodConfig(
-            label="4. Optimizing for Production Value with Power Penalty with Single Objective Function...",
+            name="Single Objective: Value with Power Penalty",
+            abbreviation="S-VP",
             objective_method=ObjMethods.S_VALUE_POWER,
             graph_suffix=f"{example_key}_graph_s_value_power",
             graph_title=f"{example_title}: Production Penalized with Power",
         ),
         MethodConfig(
-            label="5. Optimizing for Production Value with Waste and Power Penalty with Single Objective Function...",
+            name="Single Objective: Value with Waste and Power Penalty",
+            abbreviation="S-VWP",
             objective_method=ObjMethods.S_VALUE_WASTE_POWER,
             graph_suffix=f"{example_key}_graph_s_value_waste_power",
             graph_title=f"{example_title}: Production Penalized with Waste and Power",
         ),
         MethodConfig(
-            label="6. Optimizing for Production Value and Waste with Multi-Objective Optimization (Pareto Front)...",
+            name="Multi Objective: Value and Waste",
+            abbreviation="M-VW",
             objective_method=ObjMethods.M_VALUE_WASTE,
             graph_suffix=f"{example_key}_graph_m_value_waste",
             graph_title=f"{example_title}: Multi-Objective Optimization (Value and Waste)",
         ),
         MethodConfig(
-            label="7. Optimizing for Production Value, Waste, and Power with Multi-Objective Optimization (Pareto Front)...",
+            name="Multi Objective: Value, Waste, and Power",
+            abbreviation="M-VWP",
             objective_method=ObjMethods.M_VALUE_WASTE_POWER,
             graph_suffix=f"{example_key}_graph_m_value_waste_power",
             graph_title=f"{example_title}: Multi-Objective Optimization (Value, Waste, and Power)",
@@ -66,13 +87,14 @@ def default_method_configs(example_key: str, example_title: str) -> List[MethodC
 
 
 def _run_step(step_name: str, func: Callable[[], None], announce_interval_sec: int = 60) -> float:
-    """Run one evaluation step and print heartbeat updates while it is running."""
+    """ Run one evaluation step and print heartbeat updates while it is running """
     error_holder = []
 
     def target():
         try:
             func()
-        except Exception as exc:  # Re-raised below in main thread.
+        # Store error to be re-raised in main thread after join
+        except Exception as exc:
             error_holder.append(exc)
 
     start_time = time.perf_counter()
@@ -95,15 +117,14 @@ def _run_step(step_name: str, func: Callable[[], None], announce_interval_sec: i
     return elapsed
 
 
-def _run_method(problem_factory: Callable[[str], ProductionProblem], config: MethodConfig, output_dir: str) -> Tuple[str, float, Dict[str, float]]:
-    print(f"\n{config.label}")
+def _run_method(problem_factory: Callable[[str], ProductionProblem], config: MethodConfig, output_dir: str) -> MethodEvaluationResult:
     problem = problem_factory(config.objective_method)
     save_path = f"{output_dir}/{config.graph_suffix}"
 
     total_start = time.perf_counter()
     step_timings: Dict[str, float] = {}
 
-    # Store timings for each step
+    # Store timings for each evaluation step
     step_timings["Optimization"] = _run_step("Optimization", problem.optimize)
     step_timings["Graph creation"] = _run_step("Graph creation", problem.create_graph)
     if config.print_graph:
@@ -113,43 +134,68 @@ def _run_method(problem_factory: Callable[[str], ProductionProblem], config: Met
         lambda: problem.visualize_graph(save_path, config.graph_title),
     )
 
+    # Obtain result metrics after optimization and graph creation
+    value = problem.get_value()
+    waste = problem.get_waste()
+    power = problem.get_power_consumption()
+
     total_elapsed = time.perf_counter() - total_start
     print(f"Total time taken: {total_elapsed:.4f} seconds")
-    return config.label, total_elapsed, step_timings
+    return MethodEvaluationResult(config.name, config.abbreviation, config.objective_method, total_elapsed, value, waste, power, step_timings)
 
 
-def run_evaluation(
-    problem_factory: Callable[[str], ProductionProblem],
-    method_configs: List[MethodConfig],
-    evaluation_name: str,
-    output_dir: str = "./images/eval",
-) -> None:
-    """Run the configured evaluation methods and print per-step and summary timing."""
+def run_evaluation(problem_factory: Callable[[str], ProductionProblem], method_configs: List[MethodConfig], evaluation_name: str, output_dir: str = "./images/eval") -> List[MethodEvaluationResult]:
+    """ Run the configured evaluation methods and return per-method metrics and timings. """
+    
+    # Ensure output folder exists for method graph images
+    os.makedirs(output_dir, exist_ok=True)
+
     print(f"\n\nRunning {evaluation_name}...")
     overall_start = time.perf_counter()
-    results = []
-    for config in method_configs:
-        result_holder = []
+    results: List[MethodEvaluationResult] = []
+    
+    # Loop through each method 
+    total_methods = len(method_configs)
+    for index, config in enumerate(method_configs, start=1):
+        print(f"\n{index}/{total_methods}. Optimizing with {config.name} ({config.abbreviation})...")
+        result_holder: List[MethodEvaluationResult] = []
         worker = threading.Thread(
             target=lambda c=config: result_holder.append(_run_method(problem_factory, c, output_dir)),
             daemon=True,
         )
+        
+        # Timeout functionality: If the worker thread is still alive after the timeout, skip it and record a timeout result
         worker.start()
-        worker.join(timeout=config.timeout_sec)  # None means wait indefinitely
+        worker.join(timeout=config.timeout_sec)
         if worker.is_alive():
-            elapsed = time.perf_counter() - overall_start
-            print(f"  [TIMEOUT] {config.label} exceeded {config.timeout_sec}s — skipping.")
-            results.append((config.label, config.timeout_sec, {}))
+            print(f"  [TIMEOUT] {config.name} ({config.abbreviation}) exceeded {config.timeout_sec}s — skipping.")
+            timeout_value = float(config.timeout_sec) if config.timeout_sec is not None else float("nan")
+            results.append(
+                MethodEvaluationResult(
+                    method_name=config.name,
+                    method_abbreviation=config.abbreviation,
+                    objective_method=config.objective_method,
+                    total_time_sec=timeout_value,
+                    value=float("nan"),
+                    waste=float("nan"),
+                    power=float("nan"),
+                    step_timings={},
+                )
+            )
+        
         else:
             results.append(result_holder[0])
 
+    # Summarize time taken for each method
     print("\nTiming summary:")
-    for label, total_elapsed, step_timings in results:
+    for result in results:
         step_summary = ", ".join(
-            f"{step_name}: {duration:.4f}s" for step_name, duration in step_timings.items()
+            f"{step_name}: {duration:.4f}s" for step_name, duration in result.step_timings.items()
         )
-        print(f"- {label} Total: {total_elapsed:.4f}s [{step_summary}]")
+        print(f"- {result.method_abbreviation} ({result.method_name}) Total: {result.total_time_sec:.4f}s [{step_summary}]")
 
+    # Summarize overall time taken
     overall_elapsed = time.perf_counter() - overall_start
     print(f"Overall total time: {overall_elapsed:.4f} seconds")
     print(f"{evaluation_name} complete!")
+    return results
