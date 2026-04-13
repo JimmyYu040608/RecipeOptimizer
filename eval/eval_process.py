@@ -36,6 +36,14 @@ class MethodEvaluationResult:
     timed_out: bool = False
 
 
+class MethodTimeoutError(Exception):
+    """Raised when an evaluation method exceeds its configured timeout."""
+
+    def __init__(self, elapsed_sec: float):
+        super().__init__("Method timed out")
+        self.elapsed_sec = elapsed_sec
+
+
 def default_method_configs(example_key: str, example_title: str) -> List[MethodConfig]:
     """ Create standard method configurations for a given example """
     return [
@@ -91,7 +99,12 @@ def default_method_configs(example_key: str, example_title: str) -> List[MethodC
     ]
 
 
-def _run_step(step_name: str, func: Callable[[], None], announce_interval_sec: int = 60) -> float:
+def _run_step(
+    step_name: str,
+    func: Callable[[], None],
+    announce_interval_sec: int = 60,
+    timeout_sec: Optional[float] = None,
+) -> float:
     """ Run one evaluation step and print heartbeat updates while it is running """
     error_holder = []
 
@@ -110,6 +123,8 @@ def _run_step(step_name: str, func: Callable[[], None], announce_interval_sec: i
     while worker.is_alive():
         worker.join(timeout=1.0)
         elapsed = time.perf_counter() - start_time
+        if timeout_sec is not None and elapsed >= timeout_sec:
+            raise MethodTimeoutError(elapsed)
         if elapsed >= next_announcement:
             print(f"{step_name} in progress... {elapsed:.1f} seconds elapsed")
             next_announcement += announce_interval_sec
@@ -127,16 +142,26 @@ def _run_method(problem_factory: Callable[[str], ProductionProblem], config: Met
     save_path = f"{output_dir}/{config.graph_suffix}"
 
     total_start = time.perf_counter()
+    deadline = (total_start + config.timeout_sec) if config.timeout_sec is not None else None
     step_timings: Dict[str, float] = {}
 
+    def remaining_timeout() -> Optional[float]:
+        if deadline is None:
+            return None
+        remaining = deadline - time.perf_counter()
+        if remaining <= 0:
+            raise MethodTimeoutError(time.perf_counter() - total_start)
+        return remaining
+
     # Store timings for each evaluation step
-    step_timings["Optimization"] = _run_step("Optimization", problem.optimize)
-    step_timings["Graph creation"] = _run_step("Graph creation", problem.create_graph)
+    step_timings["Optimization"] = _run_step("Optimization", problem.optimize, timeout_sec=remaining_timeout())
+    step_timings["Graph creation"] = _run_step("Graph creation", problem.create_graph, timeout_sec=remaining_timeout())
     if config.print_graph:
-        step_timings["Print graph"] = _run_step("Print graph", problem.print_graph)
+        step_timings["Print graph"] = _run_step("Print graph", problem.print_graph, timeout_sec=remaining_timeout())
     step_timings["Visualization"] = _run_step(
         "Visualization",
         lambda: problem.visualize_graph(save_path, config.graph_title),
+        timeout_sec=remaining_timeout(),
     )
 
     # Obtain result metrics after optimization and graph creation
@@ -207,22 +232,15 @@ def run_evaluation(problem_factory: Callable[[str], ProductionProblem], method_c
     overall_start = time.perf_counter()
     results: List[MethodEvaluationResult] = []
     
-    # Loop through each method 
+    # Loop through each method
     total_methods = len(method_configs)
     for index, config in enumerate(method_configs, start=1):
         print(f"\n{index}/{total_methods}. Optimizing with {config.name} ({config.abbreviation})...")
-        result_holder: List[MethodEvaluationResult] = []
-        worker = threading.Thread(
-            target=lambda c=config: result_holder.append(_run_method(problem_factory, c, output_dir)),
-            daemon=True,
-        )
-        
-        # Timeout functionality: If the worker thread is still alive after the timeout, skip it and record a timeout result
-        worker.start()
-        worker.join(timeout=config.timeout_sec)
-        if worker.is_alive():
+        try:
+            result = _run_method(problem_factory, config, output_dir)
+        except MethodTimeoutError as exc:
             print(f"  [TIMEOUT] {config.name} ({config.abbreviation}) exceeded {config.timeout_sec}s — skipping.")
-            timeout_value = float(config.timeout_sec) if config.timeout_sec is not None else float("nan")
+            timeout_value = float(config.timeout_sec) if config.timeout_sec is not None else float(exc.elapsed_sec)
             result = MethodEvaluationResult(
                 method_name=config.name,
                 method_abbreviation=config.abbreviation,
@@ -234,8 +252,6 @@ def run_evaluation(problem_factory: Callable[[str], ProductionProblem], method_c
                 step_timings={},
                 timed_out=True,
             )
-        else:
-            result = result_holder[0]
 
         results.append(result)
         if log_payload is not None:

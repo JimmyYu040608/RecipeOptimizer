@@ -9,12 +9,13 @@ from src.multi_objective.pick_best_pareto import pick_utopia
 
 RECIPE_MAX = 100 # Maximum allowable amount of any single recipe
 PRODUCT_MAX = 10000 # Maximum allowable amount of any single product
-RECIPE_COST = 0.01 # Small cost to discourage extraneous recipes
 
+RECIPE_COST = 0.01 # Small cost to discourage extraneous recipes
 ALT_PENALTY = 1e-6 # Penalty weight for using alternate recipes, to be tuned based on the specific problem context
-WASTE_PENALTY = 10 # Penalty weight for waste in value+waste optimization, to be tuned based on the specific problem context
+WASTE_PENALTY = 1 # Penalty weight for waste in value+waste optimization, to be tuned based on the specific problem context
 POWER_PENALTY = 0.01 # Penalty weight for power consumption in value+power optimization, to be tuned based on the specific problem context
 
+PARETO_RESOLUTION = 20 # Resolution for sampling weights in weighted-sum multi-objective optimization, to be tuned based on the specific problem context and computational budget
 
 class ProductionProblem:
     def __init__(self, recipes: List[Recipe], inputs: Dict[Product, float], outputs: Dict[Product, float], obj_method=ObjMethods.S_VALUE):
@@ -49,30 +50,6 @@ class ProductionProblem:
         self.solver = pywraplp.Solver.CreateSolver("SCIP")
         if not self.solver:
             raise ValueError("Solver not found")
-
-    
-    def set_recipe_max(self, value: int):
-        self._recipe_max = value
-    
-    
-    def set_product_max(self, value: int):
-        self._product_max = value
-    
-    
-    def set_recipe_cost(self, value: float):
-        self._recipe_cost = value
-
-
-    def set_alt_penalty(self, value: float):
-        self._alt_penalty = value
-
-
-    def set_waste_penalty(self, value: float):
-        self._waste_penalty = value
-
-
-    def set_power_penalty(self, value: float):
-        self._power_penalty = value
 
     
     def get_recipe_max(self):
@@ -263,7 +240,7 @@ class ProductionProblem:
         from src.multi_objective.weight_estimate import normalize, ws_norm_params
         
         pareto_solutions = []
-        resolution = 20 # Sampled step = 1/resolution
+        resolution = PARETO_RESOLUTION # Sampled step = 1/resolution
         weights = np.array(integer_simplex(2, resolution), dtype=float) / resolution
         
         # Obtain normalization parameters for this problem
@@ -305,10 +282,6 @@ class ProductionProblem:
             # Add weighted waste part from explicit leftover variables
             for product_name, leftover_var in self.leftover_vars.items():
                 self.objective.SetCoefficient(leftover_var, w2 * waste_norm_scale)
-
-            # Ensure the optimizer picks the routine which uses fewest recipes among those with same waste
-            for recipe in self.recipes:
-                self._add_obj_coeff(self.recipe_vars[recipe.name], self.get_recipe_cost())
 
             self.objective.SetMinimization()
 
@@ -358,7 +331,7 @@ class ProductionProblem:
         from src.multi_objective.weight_estimate import normalize, ws_norm_params
 
         pareto_solutions = []
-        resolution = 20 # Sampled step = 1/resolution
+        resolution = PARETO_RESOLUTION # Sampled step = 1/resolution
         weights = np.array(integer_simplex(3, resolution), dtype=float) / resolution
 
         # Obtain normalization parameters for this problem

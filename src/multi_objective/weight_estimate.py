@@ -53,7 +53,12 @@ def _estimate_value_bounds(problem_obj: ProblemObj = None) -> Tuple[float, float
 def _estimate_waste_bounds(problem_obj: ProblemObj = None) -> Tuple[float, float]:
     """ Return (best, worst) bounds for waste amount """
     
-    f_best = 0 # Background knowledge: Best case = No waste is left
+    # Best case = Minimum waste achieved by optimizing for waste only
+    f_problem_best = _build_problem(problem_obj, ObjMethods.S_WASTE)
+    f_problem_best.optimize()
+    f_problem_best.create_graph()
+    f_best = f_problem_best.get_waste()
+    
 
     # Customize "deoptimize" procedure to get as much waste as possible
     f_problem_worst = _build_problem(problem_obj, ObjMethods.S_WASTE)
