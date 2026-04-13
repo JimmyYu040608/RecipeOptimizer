@@ -45,3 +45,10 @@ def integer_simplex(k, n):
             solutions.append([i] + tail)
     
     return solutions
+
+
+def to_float(value) -> float:
+    """ Convert a value to float, or return NaN if the value is None """
+    if value is None:
+        return float("nan")
+    return float(value)

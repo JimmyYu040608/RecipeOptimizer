@@ -138,7 +138,7 @@ class DemoProblems:
         """ Large example with around 12 major outputs and around 12 inputs """
         # Load real recipes from data JSON file
         recipes = load_recipes()
-        # Input materials: Raw materials and premature products
+        # Input materials: Raw materials and premature products (should be merely sufficient)
         inputs = {
             "Iron Ore": 9200,
             "Copper Ore": 3600,

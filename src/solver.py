@@ -11,9 +11,9 @@ RECIPE_MAX = 100 # Maximum allowable amount of any single recipe
 PRODUCT_MAX = 10000 # Maximum allowable amount of any single product
 RECIPE_COST = 0.01 # Small cost to discourage extraneous recipes
 
-ALT_PENALTY = 0.001 # Penalty weight for using alternate recipes, to be tuned based on the specific problem context
+ALT_PENALTY = 1e-6 # Penalty weight for using alternate recipes, to be tuned based on the specific problem context
 WASTE_PENALTY = 10 # Penalty weight for waste in value+waste optimization, to be tuned based on the specific problem context
-POWER_PENALTY = 1 # Penalty weight for power consumption in value+power optimization, to be tuned based on the specific problem context
+POWER_PENALTY = 0.01 # Penalty weight for power consumption in value+power optimization, to be tuned based on the specific problem context
 
 
 class ProductionProblem:
@@ -26,6 +26,9 @@ class ProductionProblem:
         self._recipe_max = RECIPE_MAX
         self._product_max = PRODUCT_MAX
         self._recipe_cost = RECIPE_COST
+        self._alt_penalty = ALT_PENALTY
+        self._waste_penalty = WASTE_PENALTY
+        self._power_penalty = POWER_PENALTY
         # Initialize other optimization variables
         self.recipe_vars = {} # {"recipe_name": RecipeVariable}
         self.objective = None
@@ -38,6 +41,7 @@ class ProductionProblem:
         self.result_output_value = None
         self.result_waste_value = None
         self.result_power_consumption = None
+        self.best_weights = None # {"objective_name": weight} for multi-objective methods, None for single-objective
         
         # Initialize the solver
         # GLOP: General linear programming solver
@@ -58,6 +62,18 @@ class ProductionProblem:
     def set_recipe_cost(self, value: float):
         self._recipe_cost = value
 
+
+    def set_alt_penalty(self, value: float):
+        self._alt_penalty = value
+
+
+    def set_waste_penalty(self, value: float):
+        self._waste_penalty = value
+
+
+    def set_power_penalty(self, value: float):
+        self._power_penalty = value
+
     
     def get_recipe_max(self):
         return self._recipe_max
@@ -69,8 +85,24 @@ class ProductionProblem:
     
     def get_recipe_cost(self):
         return self._recipe_cost
-    
-    
+
+
+    def get_alt_penalty(self):
+        return self._alt_penalty
+
+
+    def get_waste_penalty(self):
+        return self._waste_penalty
+
+
+    def get_power_penalty(self):
+        return self._power_penalty
+
+
+    def get_best_weights(self):
+        return self.best_weights
+
+
     def get_recipe_by_name(self, name):
         for recipe in self.recipes:
             if recipe.name == name:
@@ -153,7 +185,7 @@ class ProductionProblem:
             recipe_contribution -= self.get_recipe_cost()
             # Penalize alternate recipes slightly to prioritize original recipes for simplicity
             if recipe.alternate:
-                recipe_contribution -= ALT_PENALTY
+                recipe_contribution -= self.get_alt_penalty()
             recipe_contribution = -recipe_contribution # To be turned into minimization problem
             self._add_obj_coeff(self.recipe_vars[recipe.name], recipe_contribution)
     
@@ -161,13 +193,16 @@ class ProductionProblem:
     def _set_obj_waste(self):
         """ (To be used in _single_obj_process) Create waste penalities to the objective """
         for product_name, leftover_var in self.leftover_vars.items():
-            self._add_obj_coeff(leftover_var, WASTE_PENALTY)
+            self._add_obj_coeff(leftover_var, self.get_waste_penalty())
+        # Ensure the optimizer picks the routine which uses fewest recipes among those with same waste
+        for recipe in self.recipes:
+            self._add_obj_coeff(self.recipe_vars[recipe.name], self.get_recipe_cost())
     
     
     def _set_obj_power(self):
         """ (To be used in _single_obj_process) Create power consumption penalities to the objective """
         for recipe in self.recipes:
-            self._add_obj_coeff(self.recipe_vars[recipe.name], recipe.power_consumption * POWER_PENALTY)
+            self._add_obj_coeff(self.recipe_vars[recipe.name], recipe.power_consumption * self.get_power_penalty())
     
     
     def _report_solution(self):
@@ -264,12 +299,16 @@ class ProductionProblem:
                 weighted_contribution = w1 * recipe_contribution
                 # Penalize alternate recipes slightly to prioritize original recipes for simplicity
                 if recipe.alternate:
-                    weighted_contribution -= ALT_PENALTY
+                    weighted_contribution -= self.get_alt_penalty()
                 self.objective.SetCoefficient(self.recipe_vars[recipe.name], weighted_contribution)
 
             # Add weighted waste part from explicit leftover variables
             for product_name, leftover_var in self.leftover_vars.items():
                 self.objective.SetCoefficient(leftover_var, w2 * waste_norm_scale)
+
+            # Ensure the optimizer picks the routine which uses fewest recipes among those with same waste
+            for recipe in self.recipes:
+                self._add_obj_coeff(self.recipe_vars[recipe.name], self.get_recipe_cost())
 
             self.objective.SetMinimization()
 
@@ -307,6 +346,7 @@ class ProductionProblem:
         best_w1 = pareto_solutions[best_index][2]
         best_w2 = pareto_solutions[best_index][3]
         print(f"The best weight between value and waste is {best_w1}:{best_w2}")
+        self.best_weights = {"value": best_w1, "waste": best_w2}
         for recipe_name, sol_val in pareto_solutions[best_index][4].items():
             # Recall: [4] stores current_solution {recipe.name: ...solution_value()}
             self.opt_recipe_count[recipe_name] = (self.get_recipe_by_name(recipe_name), int(sol_val))
@@ -347,7 +387,7 @@ class ProductionProblem:
                 weighted_contribution = (w1 * recipe_contribution) + (w3 * recipe.power_consumption * power_norm_scale)
                 # Penalize alternate recipes slightly to prioritize original recipes for simplicity
                 if recipe.alternate:
-                    weighted_contribution -= ALT_PENALTY
+                    weighted_contribution -= self.get_alt_penalty()
                 self.objective.SetCoefficient(self.recipe_vars[recipe.name], weighted_contribution)
 
             # Add weighted waste part from explicit leftover variables
@@ -391,6 +431,7 @@ class ProductionProblem:
         best_w2 = pareto_solutions[best_index][4]
         best_w3 = pareto_solutions[best_index][5]
         print(f"The best weight between value:waste:power is {best_w1}:{best_w2}:{best_w3}")
+        self.best_weights = {"value": best_w1, "waste": best_w2, "power": best_w3}
         for recipe_name, sol_val in pareto_solutions[best_index][6].items():
             # Recall: [6] stores current_solution {recipe.name: ...solution_value()}
             self.opt_recipe_count[recipe_name] = (self.get_recipe_by_name(recipe_name), int(sol_val))
@@ -524,10 +565,14 @@ class ProductionProblem:
         total_score = custom_round_float(self.result_output_value)
         total_waste = custom_round_float(self.result_waste_value)
         total_power = custom_round_float(self.result_power_consumption)
+        total_vertices = len(self.graph.vertices)
+        total_edges = len(self.graph.edges)
         title = f"{title} (Product Value: {total_score}, Wasted: {total_waste} unit/min, Power: {total_power} MW)"
         
         # Prepare stats to be displayed on dedicated legend panel
         stats = {
+            "Vertices": total_vertices,
+            "Edges": total_edges,
             "Product Value": total_score,
             "Wasted": f"{total_waste} unit/min",
             "Power": f"{total_power} MW",
