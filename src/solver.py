@@ -1,6 +1,6 @@
 import numpy as np
 from ortools.linear_solver import pywraplp
-from typing import List, Dict, Set, Callable
+from typing import List, Dict, Set, Callable, Tuple
 import math
 
 from src.utils import custom_round_float, MethodTypes, ObjMethods, integer_simplex
@@ -135,6 +135,65 @@ class ProductionProblem:
         
         # DEBUG: Announce reduction results
         # print(f"Reducing problem: removed {len(unnecessary_inputs)} unnecessary inputs and {len(unnecessary_recipes)} recipes.")
+
+
+    def _is_reversible_pair(self, recipe_a: Recipe, recipe_b: Recipe, tol: float = 1e-9) -> bool:
+        """ Detect whether recipe_b is the reverse transform of recipe_a up to a positive scale. """
+        products = recipe_a.products_used().union(recipe_b.products_used())
+        ratio = None
+
+        for product in products:
+            net_a = recipe_a.product_net_rate(product)
+            net_b = recipe_b.product_net_rate(product)
+
+            # Ignore products unused by both recipes.
+            if abs(net_a) <= tol and abs(net_b) <= tol:
+                continue
+            # A reversible pair must involve both recipes on every used product.
+            if abs(net_a) <= tol or abs(net_b) <= tol:
+                return False
+
+            local_ratio = -net_a / net_b
+            if local_ratio <= tol:
+                return False
+            if ratio is None:
+                ratio = local_ratio
+            elif abs(local_ratio - ratio) > 1e-6 * max(1.0, abs(ratio)):
+                return False
+
+        return ratio is not None
+
+
+    def _add_reversible_pair_exclusion_constraints(self):
+        """ Add hard mutual-exclusion constraints for detected reversible recipe pairs. """
+        reversible_pairs: List[Tuple[Recipe, Recipe]] = []
+        for i in range(len(self.recipes)):
+            recipe_a = self.recipes[i]
+            for j in range(i + 1, len(self.recipes)):
+                recipe_b = self.recipes[j]
+                if self._is_reversible_pair(recipe_a, recipe_b):
+                    reversible_pairs.append((recipe_a, recipe_b))
+
+        if not reversible_pairs:
+            return
+
+        # Introduce binary "active" vars and link usage with x <= M * active.
+        active_vars: Dict[str, pywraplp.Variable] = {}
+        for recipe_a, recipe_b in reversible_pairs:
+            for recipe in (recipe_a, recipe_b):
+                if recipe.name in active_vars:
+                    continue
+                active_var = self.solver.IntVar(0, 1, f"active_{recipe.name}")
+                active_vars[recipe.name] = active_var
+                link_ct = self.solver.RowConstraint(-self.solver.infinity(), 0, f"link_active_{recipe.name}")
+                link_ct.SetCoefficient(self.recipe_vars[recipe.name], 1)
+                link_ct.SetCoefficient(active_var, -self.get_recipe_max())
+
+        # For each reversible pair, enforce that at most one recipe can be active.
+        for recipe_a, recipe_b in reversible_pairs:
+            pair_ct = self.solver.RowConstraint(-self.solver.infinity(), 1, f"mutex_reversible_{recipe_a.name}__{recipe_b.name}")
+            pair_ct.SetCoefficient(active_vars[recipe_a.name], 1)
+            pair_ct.SetCoefficient(active_vars[recipe_b.name], 1)
     
     
     # def _multi_obj_solve(self, contribution_list, resolution):
@@ -441,6 +500,9 @@ class ProductionProblem:
         # Integer variable bounded from 0 to RECIPE_MAX, with name of the recipes
         # List of recipe counts, if there are 100 different recipes, here creates 100 variables to be optimized
         self.recipe_vars = dict([(r.name, self.solver.IntVar(0, self.get_recipe_max(), r.name)) for r in self.recipes]) # {str: IntVar}
+
+        # Add hard mutual-exclusion constraints for known reversible recipe pairs.
+        self._add_reversible_pair_exclusion_constraints()
         
         # DEBUG
         # print("\nNumber of variables: ", self.solver.NumVariables())

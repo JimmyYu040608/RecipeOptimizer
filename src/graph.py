@@ -410,6 +410,7 @@ class ProductionGraph:
 
         # Render the graph
         rendered_path = dot.render(save_path, format='png', cleanup=True)
+        # Render legend overlaying on the png
         self._draw_legend_on_png(rendered_path, stats)
         print(f"Graph visualization saved as {save_path}")
         # dot.view()
