@@ -1,4 +1,5 @@
 from typing import List, Dict, Tuple, Optional
+from collections import deque
 from graphviz import Digraph
 from PIL import Image, ImageDraw, ImageFont
 
@@ -264,107 +265,59 @@ class ProductionGraph:
         return rows
 
 
-    def _split_into_band_rows(self, cell_texts, cell_widths, cell_pad_x, divider_gap, img_width):
-        """
-        Split cells into the minimum number of equal-ish rows so every row's
-        natural content width fits within img_width.
-        Returns a list of row slices: each slice is a list of (text, width) pairs.
-        """
-        def natural_row_w(indices):
-            return (sum(cell_pad_x * 2 + cell_widths[i] for i in indices)
-                    + divider_gap * (len(indices) - 1))
-
-        n = len(cell_texts)
-        # Try 1 row first, then 2, etc. until everything fits.
-        for num_rows in range(1, n + 1):
-            per_row = (n + num_rows - 1) // num_rows   # ceil division
-            slices = [list(range(r * per_row, min((r + 1) * per_row, n)))
-                      for r in range(num_rows)
-                      if r * per_row < n]
-            if all(natural_row_w(s) <= img_width for s in slices):
-                return slices
-        # Fallback: one cell per row
-        return [[i] for i in range(n)]
-
-
     def _draw_legend_on_png(self, image_path: str, stats: Optional[Dict[str, object]] = None):
-        """ Extend the PNG canvas downward with a flat band of legend cells, auto-wrapping rows if needed """
+        """ Draw a title-less legend box at fixed bottom-right of the output image """
 
         rows = self._legend_rows(stats)
         if not rows:
             return
 
         with Image.open(image_path).convert("RGBA") as img:
+            draw = ImageDraw.Draw(img)
             try:
                 font = ImageFont.truetype("arial.ttf", 24)
             except OSError:
                 font = ImageFont.load_default()
 
-            cell_pad_x = 16
-            cell_pad_y = 10
-            divider_gap = 32
+            cell_pad_x = 14
+            cell_pad_y = 8
+            margin = 24
+            col_gap = 22
 
-            tmp_draw = ImageDraw.Draw(img)
-
-            cell_texts = []
-            cell_colors = []
-            for left_text, right_text, left_color, _ in rows:
-                cell_texts.append(f"{left_text}: {right_text}")
-                cell_colors.append(left_color)
-
-            cell_widths = []
+            left_col_w = 0
+            right_col_w = 0
             row_h = 0
-            for text in cell_texts:
-                bb = tmp_draw.textbbox((0, 0), text, font=font)
-                cell_widths.append(bb[2] - bb[0])
-                row_h = max(row_h, bb[3] - bb[1])
+            for left_text, right_text, _, _ in rows:
+                left_bb = draw.textbbox((0, 0), left_text, font=font)
+                right_bb = draw.textbbox((0, 0), right_text, font=font)
+                left_col_w = max(left_col_w, left_bb[2] - left_bb[0])
+                right_col_w = max(right_col_w, right_bb[2] - right_bb[0])
+                row_h = max(row_h, left_bb[3] - left_bb[1], right_bb[3] - right_bb[1])
 
-            cell_h = row_h + cell_pad_y * 2
+            table_w = (cell_pad_x * 4) + left_col_w + right_col_w + col_gap
+            table_h = len(rows) * (row_h + (cell_pad_y * 2))
 
-            # Decide how many band-rows are needed so content fits the image width
-            band_rows = self._split_into_band_rows(cell_texts, cell_widths, cell_pad_x, divider_gap, img.width)
-            num_band_rows = len(band_rows)
-            strip_h = cell_h * num_band_rows + 2   # +2 for outer border
+            x1 = img.width - margin
+            y0 = img.height - margin - table_h
+            x0 = x1 - table_w
+            y1 = y0 + table_h
 
-            # Create new canvas: original graph on top, legend strip below
-            new_img = Image.new("RGBA", (img.width, img.height + strip_h), (255, 255, 255, 255))
-            new_img.paste(img, (0, 0))
-            draw = ImageDraw.Draw(new_img)
+            draw.rectangle((x0, y0, x1, y1), fill=(255, 255, 255, 235), outline=(0, 0, 0, 255), width=2)
+            split_x = x0 + (cell_pad_x * 2) + left_col_w + (col_gap // 2)
+            draw.line((split_x, y0, split_x, y1), fill=(0, 0, 0, 255), width=1)
 
-            strip_y0 = img.height
-            strip_y1 = img.height + strip_h
-            draw.rectangle((0, strip_y0, img.width - 1, strip_y1 - 1),
-                            fill=(255, 255, 255, 255), outline=(0, 0, 0, 255), width=2)
+            current_y = y0
+            for i, (left_text, right_text, left_color, right_color) in enumerate(rows):
+                if i > 0:
+                    draw.line((x0, current_y, x1, current_y), fill=(0, 0, 0, 255), width=1)
+                left_x = x0 + cell_pad_x
+                right_x = split_x + (col_gap // 2) + cell_pad_x
+                text_y = current_y + cell_pad_y
+                draw.text((left_x, text_y), left_text, font=font, fill=left_color)
+                draw.text((right_x, text_y), right_text, font=font, fill=right_color)
+                current_y += row_h + (cell_pad_y * 2)
 
-            for band_idx, indices in enumerate(band_rows):
-                # Horizontal separator between band rows (not before the first)
-                if band_idx > 0:
-                    sep_y = strip_y0 + band_idx * cell_h
-                    draw.line((0, sep_y, img.width, sep_y), fill=(0, 0, 0, 255), width=1)
-
-                # Distribute extra space evenly across cells in this band row
-                natural_w = (sum(cell_pad_x * 2 + cell_widths[i] for i in indices)
-                             + divider_gap * (len(indices) - 1))
-                extra = max(0, img.width - natural_w)
-                per_cell_extra = extra // len(indices)
-
-                y0 = strip_y0 + band_idx * cell_h
-                current_x = 0
-                for pos, i in enumerate(indices):
-                    cell_w = cell_pad_x * 2 + cell_widths[i] + per_cell_extra
-                    if pos < len(indices) - 1:
-                        cell_w += divider_gap
-
-                    draw.text((current_x + cell_pad_x, y0 + cell_pad_y),
-                              cell_texts[i], font=font, fill=cell_colors[i])
-
-                    if pos < len(indices) - 1:
-                        div_x = current_x + cell_w
-                        draw.line((div_x, y0, div_x, y0 + cell_h), fill=(0, 0, 0, 255), width=1)
-
-                    current_x += cell_w
-
-            new_img.save(image_path)
+            img.save(image_path)
 
 
     def visualize(self, save_path, title, stats: Optional[Dict[str, object]] = None):

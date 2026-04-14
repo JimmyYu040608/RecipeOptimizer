@@ -83,11 +83,10 @@ def _normalize_series(values: List[float]) -> List[float]:
     clean = [v for v in values if np.isfinite(v)]
     if not clean:
         return [0.0 for _ in values]
-    v_min = min(clean)
     v_max = max(clean)
-    if abs(v_max - v_min) < 1e-12:
-        return [1.0 if np.isfinite(v) else 0.0 for v in values]
-    return [((v - v_min) / (v_max - v_min)) if np.isfinite(v) else 0.0 for v in values]
+    if abs(v_max) < 1e-12:
+        return [0.0 if np.isfinite(v) else 0.0 for v in values]
+    return [(v / v_max) if np.isfinite(v) else 0.0 for v in values]
 
 
 def _format_raw(metric_key: str, value: float) -> str:

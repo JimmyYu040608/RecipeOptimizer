@@ -31,15 +31,14 @@ def _raw_metrics(result: MethodEvaluationResult) -> Dict[str, float]:
 
 
 def _normalize_series(values: List[float]) -> List[float]:
-    # Normalize one metric series to [0, 1] for visual comparison
+    # Scale by metric maximum so the highest bar fits while preserving baseline separation.
     clean = [v for v in values if np.isfinite(v)]
     if not clean:
         return [0.0 for _ in values]
-    v_min = min(clean)
     v_max = max(clean)
-    if abs(v_max - v_min) < 1e-12:
-        return [1.0 if np.isfinite(v) else 0.0 for v in values]
-    return [((v - v_min) / (v_max - v_min)) if np.isfinite(v) else 0.0 for v in values]
+    if abs(v_max) < 1e-12:
+        return [0.0 if np.isfinite(v) else 0.0 for v in values]
+    return [(v / v_max) if np.isfinite(v) else 0.0 for v in values]
 
 
 def _format_raw_value(metric_key: str, value: float) -> str:

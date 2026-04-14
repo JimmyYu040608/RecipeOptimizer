@@ -1,11 +1,11 @@
 import numpy as np
 from ortools.linear_solver import pywraplp
 from typing import List, Dict, Set, Callable
-import math
 
 from src.utils import custom_round_float, MethodTypes, ObjMethods, integer_simplex
 from src.recipe import Product, Recipe
 from src.graph import ProductionGraph, SinkVertex, WasteVertex, MachineVertex
+from src.multi_objective.pick_best_pareto import pick_utopia
 
 RECIPE_MAX = 100 # Maximum allowable amount of any single recipe
 PRODUCT_MAX = 10000 # Maximum allowable amount of any single product
@@ -239,16 +239,9 @@ class ProductionProblem:
         
         from src.multi_objective.weight_estimate import normalize, ws_norm_params
         
+        pareto_solutions = []
         resolution = PARETO_RESOLUTION # Sampled step = 1/resolution
         weights = np.array(integer_simplex(2, resolution), dtype=float) / resolution
-
-        # Precompute variable handles and objective coefficients to avoid repeated dictionary/list traversals.
-        recipe_var_items = [(recipe, self.recipe_vars[recipe.name]) for recipe in self.recipes]
-        recipe_value_coeff = {
-            recipe.name: sum(recipe.product_net_rate(c) * s for c, s in self.outputs.items())
-            for recipe in self.recipes
-        }
-        leftover_var_list = list(self.leftover_vars.values())
         
         # Obtain normalization parameters for this problem
         problem_obj = {'recipes': self.recipes, 'inputs': self.inputs, 'outputs': self.outputs}
@@ -258,18 +251,6 @@ class ProductionProblem:
         waste_norm_scale = 1 / (abs(f2_worst - f2_best) + 1e-10)
 
         utopia_point = [f1_best, f2_best]
-
-        normalized_value_coeff = {}
-        for recipe in self.recipes:
-            recipe_contribution = recipe_value_coeff[recipe.name] - self.get_recipe_cost()
-            recipe_contribution = -recipe_contribution # To be turned into minimization problem
-            normalized_value_coeff[recipe.name] = normalize(recipe_contribution, f1_best, f1_worst)
-
-        # Track best solution online to avoid storing all sampled Pareto points with full assignments.
-        best_dist = None
-        best_point = None
-        best_weights = None
-        best_solution = None
         
         # DEBUG
         # print("DEBUG: Normalize test:")
@@ -285,16 +266,21 @@ class ProductionProblem:
             
             # Create weighted objective
             self.objective = self.solver.Objective()
-            for recipe, recipe_var in recipe_var_items:
+            for recipe in self.recipes:
+                # Calculate score contribution (sum of the all target production rate * its score)
+                recipe_contribution = sum([recipe.product_net_rate(c) * s for c, s in self.outputs.items()])
+                recipe_contribution -= self.get_recipe_cost()
+                recipe_contribution = -recipe_contribution # To be turned into minimization problem
+                recipe_contribution = normalize(recipe_contribution, f1_best, f1_worst)
                 # Weighted combination (maximize value part)
-                weighted_contribution = w1 * normalized_value_coeff[recipe.name]
+                weighted_contribution = w1 * recipe_contribution
                 # Penalize alternate recipes slightly to prioritize original recipes for simplicity
                 if recipe.alternate:
                     weighted_contribution -= self.get_alt_penalty()
-                self.objective.SetCoefficient(recipe_var, weighted_contribution)
+                self.objective.SetCoefficient(self.recipe_vars[recipe.name], weighted_contribution)
 
             # Add weighted waste part from explicit leftover variables
-            for leftover_var in leftover_var_list:
+            for product_name, leftover_var in self.leftover_vars.items():
                 self.objective.SetCoefficient(leftover_var, w2 * waste_norm_scale)
 
             self.objective.SetMinimization()
@@ -304,28 +290,33 @@ class ProductionProblem:
             
             # Calculate objective values
             total_value = sum(
-                recipe_var.solution_value() * recipe_value_coeff[recipe.name]
-                for recipe, recipe_var in recipe_var_items
+                self.recipe_vars[recipe.name].solution_value() *
+                sum([recipe.product_net_rate(c) * s for c, s in self.outputs.items()])
+                for recipe in self.recipes
             )
             # Read waste directly from leftover decision variables
-            total_waste = sum(leftover_var.solution_value() for leftover_var in leftover_var_list)
+            total_waste = sum(leftover_var.solution_value() for leftover_var in self.leftover_vars.values())
 
-            point = (total_value, total_waste)
-            dist = math.dist(utopia_point, point)
-            if best_dist is None or dist < best_dist:
-                best_dist = dist
-                best_point = point
-                best_weights = (w1, w2)
-                best_solution = {recipe.name: recipe_var.solution_value() for recipe, recipe_var in recipe_var_items}
-
-        if best_dist is None or best_solution is None or best_weights is None or best_point is None:
-            raise ValueError("Fail to locate best Pareto optimum")
-
-        print(f"Best Pareto optimum found: {best_point} with distance {best_dist} to utopia point {utopia_point}")
-        best_w1, best_w2 = best_weights
+            # Store current solution for final best-weight replay
+            current_solution = {recipe.name: self.recipe_vars[recipe.name].solution_value() for recipe in self.recipes}
+            
+            pareto_solutions.append((total_value, total_waste, w1, w2, current_solution))
+        
+        # DEBUG
+        # print("Pareto Front Solutions (Value, Waste, w_production, w_waste):")
+        # for solution in pareto_solutions:
+        #     print(f"Value: {solution[0]:.2f}, Waste: {solution[1]:.2f}, w1: {solution[2]:.2f}, w2: {solution[3]:.2f}")
+        
+        # Pick the best solution among pareto solutions based on utopia point
+        best_index = pick_utopia(utopia_point, [(solution[0], solution[1]) for solution in pareto_solutions])
+        
+        # Locate back the best weight set and store best solution
+        best_w1 = pareto_solutions[best_index][2]
+        best_w2 = pareto_solutions[best_index][3]
         print(f"The best weight between value and waste is {best_w1}:{best_w2}")
         self.best_weights = {"value": best_w1, "waste": best_w2}
-        for recipe_name, sol_val in best_solution.items():
+        for recipe_name, sol_val in pareto_solutions[best_index][4].items():
+            # Recall: [4] stores current_solution {recipe.name: ...solution_value()}
             self.opt_recipe_count[recipe_name] = (self.get_recipe_by_name(recipe_name), int(sol_val))
 
 
@@ -334,16 +325,9 @@ class ProductionProblem:
 
         from src.multi_objective.weight_estimate import normalize, ws_norm_params
 
+        pareto_solutions = []
         resolution = PARETO_RESOLUTION # Sampled step = 1/resolution
         weights = np.array(integer_simplex(3, resolution), dtype=float) / resolution
-
-        # Precompute variable handles and objective coefficients to avoid repeated dictionary/list traversals.
-        recipe_var_items = [(recipe, self.recipe_vars[recipe.name]) for recipe in self.recipes]
-        recipe_value_coeff = {
-            recipe.name: sum(recipe.product_net_rate(c) * s for c, s in self.outputs.items())
-            for recipe in self.recipes
-        }
-        leftover_var_list = list(self.leftover_vars.values())
 
         # Obtain normalization parameters for this problem
         problem_obj = {'recipes': self.recipes, 'inputs': self.inputs, 'outputs': self.outputs}
@@ -356,33 +340,26 @@ class ProductionProblem:
 
         utopia_point = [f1_best, f2_best, 0]
 
-        normalized_value_coeff = {}
-        for recipe in self.recipes:
-            recipe_contribution = recipe_value_coeff[recipe.name] - self.get_recipe_cost()
-            recipe_contribution = -recipe_contribution # To be turned into minimization problem
-            normalized_value_coeff[recipe.name] = normalize(recipe_contribution, f1_best, f1_worst)
-
-        # Track best solution online to avoid storing all sampled Pareto points with full assignments.
-        best_dist = None
-        best_point = None
-        best_weights = None
-        best_solution = None
-
         # Iterate through different combinations of weights
         for w in weights:
             w1, w2, w3 = w
 
             # Create weighted objective
             self.objective = self.solver.Objective()
-            for recipe, recipe_var in recipe_var_items:
-                weighted_contribution = (w1 * normalized_value_coeff[recipe.name]) + (w3 * recipe.power_consumption * power_norm_scale)
+            for recipe in self.recipes:
+                # Calculate score contribution (sum of the all target production rate * its score)
+                recipe_contribution = sum([recipe.product_net_rate(c) * s for c, s in self.outputs.items()])
+                recipe_contribution -= self.get_recipe_cost()
+                recipe_contribution = -recipe_contribution # To be turned into minimization problem
+                recipe_contribution = normalize(recipe_contribution, f1_best, f1_worst)
+                weighted_contribution = (w1 * recipe_contribution) + (w3 * recipe.power_consumption * power_norm_scale)
                 # Penalize alternate recipes slightly to prioritize original recipes for simplicity
                 if recipe.alternate:
                     weighted_contribution -= self.get_alt_penalty()
-                self.objective.SetCoefficient(recipe_var, weighted_contribution)
+                self.objective.SetCoefficient(self.recipe_vars[recipe.name], weighted_contribution)
 
             # Add weighted waste part from explicit leftover variables
-            for leftover_var in leftover_var_list:
+            for product_name, leftover_var in self.leftover_vars.items():
                 self.objective.SetCoefficient(leftover_var, w2 * waste_norm_scale)
 
             self.objective.SetMinimization()
@@ -392,33 +369,34 @@ class ProductionProblem:
 
             # Calculate objective values
             total_value = sum(
-                recipe_var.solution_value() * recipe_value_coeff[recipe.name]
-                for recipe, recipe_var in recipe_var_items
+                self.recipe_vars[recipe.name].solution_value() *
+                sum([recipe.product_net_rate(c) * s for c, s in self.outputs.items()])
+                for recipe in self.recipes
             )
             # Read waste directly from leftover decision variables
-            total_waste = sum(leftover_var.solution_value() for leftover_var in leftover_var_list)
+            total_waste = sum(leftover_var.solution_value() for leftover_var in self.leftover_vars.values())
             # Calculate total power consumption directly from solved recipe counts
             total_power = sum(
-                recipe.power_consumption * recipe_var.solution_value()
-                for recipe, recipe_var in recipe_var_items
+                recipe.power_consumption * self.recipe_vars[recipe.name].solution_value()
+                for recipe in self.recipes
             )
 
-            point = (total_value, total_waste, total_power)
-            dist = math.dist(utopia_point, point)
-            if best_dist is None or dist < best_dist:
-                best_dist = dist
-                best_point = point
-                best_weights = (w1, w2, w3)
-                best_solution = {recipe.name: recipe_var.solution_value() for recipe, recipe_var in recipe_var_items}
+            # Store current solution for final best-weight replay
+            current_solution = {recipe.name: self.recipe_vars[recipe.name].solution_value() for recipe in self.recipes}
 
-        if best_dist is None or best_solution is None or best_weights is None or best_point is None:
-            raise ValueError("Fail to locate best Pareto optimum")
+            pareto_solutions.append((total_value, total_waste, total_power, w1, w2, w3, current_solution))
 
-        print(f"Best Pareto optimum found: {best_point} with distance {best_dist} to utopia point {utopia_point}")
-        best_w1, best_w2, best_w3 = best_weights
+        # Pick the best solution among pareto solutions based on utopia point
+        best_index = pick_utopia(utopia_point, [(solution[0], solution[1], solution[2]) for solution in pareto_solutions])
+
+        # Locate back the best weight set and store best solution
+        best_w1 = pareto_solutions[best_index][3]
+        best_w2 = pareto_solutions[best_index][4]
+        best_w3 = pareto_solutions[best_index][5]
         print(f"The best weight between value:waste:power is {best_w1}:{best_w2}:{best_w3}")
         self.best_weights = {"value": best_w1, "waste": best_w2, "power": best_w3}
-        for recipe_name, sol_val in best_solution.items():
+        for recipe_name, sol_val in pareto_solutions[best_index][6].items():
+            # Recall: [6] stores current_solution {recipe.name: ...solution_value()}
             self.opt_recipe_count[recipe_name] = (self.get_recipe_by_name(recipe_name), int(sol_val))
     
     

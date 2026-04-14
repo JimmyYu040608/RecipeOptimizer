@@ -85,6 +85,28 @@ class DemoProblems:
         problem = ProductionProblem(recipes, inputs, output_scores, method)
         return problem
 
+    def complex_example_2(method: ObjMethods) -> ProductionProblem:
+        """ Methods: Any options in ObjMethods """
+        # Load real recipes from data JSON file
+        recipes = load_recipes()
+        # Input materials: Raw materials and premature products
+        inputs = {
+            "Iron Ore": 1000,
+            "Copper Ore": 800,
+            "Coal": 700,
+            "Limestone": 700,
+        }
+        inputs = {Product(k, get_item_sink_pt(k)): v for k, v in inputs.items()}
+        # Output materials
+        output_scores = {
+            "Heavy Modular Frame": 10800,
+            "Stator": 240
+        }
+        output_scores = {Product(k, get_item_sink_pt(k)): v for k, v in output_scores.items()}
+        # Problem formation
+        problem = ProductionProblem(recipes, inputs, output_scores, method)
+        return problem
+
     def single_large_example(method: ObjMethods) -> ProductionProblem:
         """ Methods: Any options in ObjMethods """
         # Load real recipes from data JSON file

@@ -8,6 +8,9 @@ from src.demo_data import DemoProblems
 from src.solver import ProductionProblem
 
 
+_BOUNDS_CACHE: Dict[tuple, Dict[str, Tuple[float, float]]] = {}
+
+
 class ProblemObj(TypedDict):
     recipes: List[Recipe]
     inputs: Dict[Product, float]
@@ -39,12 +42,56 @@ def _build_problem(problem_obj: ProblemObj = None, obj_method: str = ObjMethods.
     return ProductionProblem(problem_obj['recipes'], problem_obj['inputs'], problem_obj['outputs'], obj_method)
 
 
+def _problem_signature(problem_obj: ProblemObj = None) -> tuple:
+    """ Build a hashable signature for cache lookup of normalization bounds """
+    if problem_obj is None:
+        return ("demo",)
+
+    recipes_sig = []
+    for recipe in problem_obj['recipes']:
+        product_sig = tuple(sorted((product.name, recipe.product_net_rate(product)) for product in recipe.products_used()))
+        recipes_sig.append((recipe.name, recipe.power_consumption, bool(recipe.alternate), product_sig))
+
+    inputs_sig = tuple(sorted((product.name, float(rate)) for product, rate in problem_obj['inputs'].items()))
+    outputs_sig = tuple(sorted((product.name, float(score)) for product, score in problem_obj['outputs'].items()))
+    return (tuple(sorted(recipes_sig)), inputs_sig, outputs_sig)
+
+
+def _compute_total_value(problem: ProductionProblem) -> float:
+    """ Compute target output value directly from solved recipe variables """
+    return sum(
+        recipe.product_net_rate(product) * score * problem.recipe_vars[recipe.name].solution_value()
+        for recipe in problem.recipes
+        for product, score in problem.outputs.items()
+    )
+
+
+def _compute_total_waste(problem: ProductionProblem) -> float:
+    """ Compute waste amount directly from solved variables without creating graph objects """
+    # Preferred source: explicit leftover variables already encode non-target surplus.
+    if problem.leftover_vars:
+        return sum(leftover_var.solution_value() for leftover_var in problem.leftover_vars.values())
+
+    # Fallback: reconstruct non-target surplus from net rates if leftover vars are absent.
+    products = sorted({product for recipe in problem.recipes for product in recipe.products_used()}, key=lambda p: p.name)
+    total_waste = 0.0
+    for product in products:
+        if product in problem.outputs:
+            continue
+        input_amount = problem.inputs[product] if product in problem.inputs else 0.0
+        produced_amount = sum(
+            recipe.product_net_rate(product) * problem.recipe_vars[recipe.name].solution_value()
+            for recipe in problem.recipes
+        )
+        total_waste += max(0.0, input_amount + produced_amount)
+    return total_waste
+
+
 def _estimate_value_bounds(problem_obj: ProblemObj = None) -> Tuple[float, float]:
     """ Return (best, worst) bounds for objective value """
     f_problem = _build_problem(problem_obj, ObjMethods.S_VALUE)
     f_problem.optimize()
-    f_problem.create_graph()
-    f_best = f_problem.get_value()
+    f_best = _compute_total_value(f_problem)
     f_worst = 0 # Background knowledge: Best case = Maximum value achieved by optimizing for value only
 
     return f_best, f_worst
@@ -56,8 +103,7 @@ def _estimate_waste_bounds(problem_obj: ProblemObj = None) -> Tuple[float, float
     # Best case = Minimum waste achieved by optimizing for waste only
     f_problem_best = _build_problem(problem_obj, ObjMethods.S_WASTE)
     f_problem_best.optimize()
-    f_problem_best.create_graph()
-    f_best = f_problem_best.get_waste()
+    f_best = _compute_total_waste(f_problem_best)
     
 
     # Customize "deoptimize" procedure to get as much waste as possible
@@ -95,8 +141,7 @@ def _estimate_waste_bounds(problem_obj: ProblemObj = None) -> Tuple[float, float
     for recipe in f_problem_worst.recipes:
         f_problem_worst.opt_recipe_count[recipe.name] = (recipe, int(f_problem_worst.recipe_vars[recipe.name].solution_value()))
 
-    f_problem_worst.create_graph()
-    f_worst = f_problem_worst.get_waste()
+    f_worst = _compute_total_waste(f_problem_worst)
     return f_best, f_worst
 
 
@@ -124,8 +169,18 @@ def ws_norm_params(problem_obj: ProblemObj = None, objectives: List[str] = None)
     if objectives is None:
         objectives = ['value', 'waste']
 
+    # Cache normalization bounds per static problem definition.
+    cache_key = _problem_signature(problem_obj)
+    if cache_key not in _BOUNDS_CACHE:
+        _BOUNDS_CACHE[cache_key] = {}
+    cached_bounds = _BOUNDS_CACHE[cache_key]
+
     result: Dict[str, Tuple[float, float]] = {}
     for objective in objectives:
+        if objective in cached_bounds:
+            result[objective] = cached_bounds[objective]
+            continue
+
         if objective == 'value':
             result['value'] = _estimate_value_bounds(problem_obj)
         elif objective == 'waste':
@@ -134,4 +189,5 @@ def ws_norm_params(problem_obj: ProblemObj = None, objectives: List[str] = None)
             result['power'] = _estimate_power_bounds(problem_obj)
         else:
             raise ValueError(f"Unsupported objective key: {objective}")
+        cached_bounds[objective] = result[objective]
     return result
