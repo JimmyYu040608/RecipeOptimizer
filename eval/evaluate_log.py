@@ -39,6 +39,16 @@ PAIRED_METHODS = [
     ("s_value_waste_power", "m_value_waste_power", "Value+Waste+Power"),
 ]
 
+ALL_METHODS = [
+    "s_value",
+    "s_waste",
+    "s_value_waste",
+    "s_value_power",
+    "s_value_waste_power",
+    "m_value_waste",
+    "m_value_waste_power",
+]
+
 
 def parse_evaluation_log_json(log_path: str) -> tuple[str, List[MethodEvaluationResult]]:
     """ Parse one log.json into MethodEvaluationResult rows """
@@ -109,13 +119,25 @@ def _metric_values(results: List[MethodEvaluationResult], metric_key: str) -> Li
     raise ValueError(f"Unsupported metric key: {metric_key}")
 
 
-def _plot_multi_metric_bars(results: List[MethodEvaluationResult], metric_keys: List[str], title: str, output_path: str):
+def _plot_multi_metric_bars(results: List[MethodEvaluationResult], metric_keys: List[str], title: str, output_path: str, bar_width: Optional[float] = None):
     if not results:
         return
 
     method_ticks = [r.method_abbreviation for r in results]
-    x = np.arange(len(results), dtype=float)
-    width = 0.18 if len(metric_keys) >= 3 else 0.28
+    is_two_method_plot = len(results) == 2
+    if is_two_method_plot:
+        group_spacing = 0.10 if len(metric_keys) >= 3 else 0.14
+        x = np.array([0.0, group_spacing], dtype=float)
+    else:
+        x = np.arange(len(results), dtype=float)
+    
+    if bar_width is None:
+        if is_two_method_plot:
+            width = 0.025 if len(metric_keys) >= 3 else 0.06
+        else:
+            width = 0.18 if len(metric_keys) >= 3 else 0.28
+    else:
+        width = bar_width
 
     if len(metric_keys) == 3:
         offsets = {
@@ -134,7 +156,11 @@ def _plot_multi_metric_bars(results: List[MethodEvaluationResult], metric_keys: 
     raw_by_metric = {k: _metric_values(results, k) for k in metric_keys}
     norm_by_metric = {k: _normalize_series(raw_by_metric[k]) for k in metric_keys}
 
-    fig, ax = plt.subplots(figsize=(12, 6))
+    if is_two_method_plot:
+        fig, ax = plt.subplots(figsize=(4.2, 4.8))
+        fig.subplots_adjust(left=0.18, right=0.96, top=0.88, bottom=0.16)
+    else:
+        fig, ax = plt.subplots(figsize=(12, 6))
 
     for metric_key in metric_keys:
         bars = ax.bar(
@@ -163,10 +189,14 @@ def _plot_multi_metric_bars(results: List[MethodEvaluationResult], metric_keys: 
     ax.set_xticks(x)
     ax.set_xticklabels(method_ticks)
     ax.set_ylim(0, 1.22)
+    if is_two_method_plot:
+        half_group_span = ((len(metric_keys) - 1) * width) + (width * 0.55)
+        ax.set_xlim(x[0] - half_group_span, x[1] + half_group_span)
     ax.grid(axis="y", alpha=0.3)
     ax.legend(loc="upper left", ncols=min(len(metric_keys), 3))
 
-    plt.tight_layout()
+    if not is_two_method_plot:
+        plt.tight_layout()
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
@@ -226,6 +256,188 @@ def _plot_time_bars_with_timeout_handling(results: List[MethodEvaluationResult],
     ax.set_xticklabels(labels)
     ax.set_ylim(0, y_top if y_top > 0 else 1)
     ax.grid(axis="y", alpha=0.3)
+
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved comparison plot to {output_path}")
+
+
+def _collect_runtime_by_example(log_paths: List[str]) -> tuple[List[str], List[str], Dict[str, List[float]], Dict[str, List[bool]]]:
+    """Collect runtime per method for every example log."""
+    desired_problem_order = [
+        "small_example",
+        "medium_example",
+        "single_large_example",
+        "example_5",
+    ]
+    ordered_logs: List[str] = []
+    remaining_logs: List[str] = []
+    problem_key_by_log = {os.path.basename(os.path.dirname(p)): p for p in log_paths}
+    for key in desired_problem_order:
+        p = problem_key_by_log.get(key)
+        if p is not None:
+            ordered_logs.append(p)
+    for p in log_paths:
+        if p not in ordered_logs:
+            remaining_logs.append(p)
+
+    example_names: List[str] = []
+    method_labels: Dict[str, str] = {}
+    time_by_method: Dict[str, List[float]] = {m: [] for m in ALL_METHODS}
+    timeout_by_method: Dict[str, List[bool]] = {m: [] for m in ALL_METHODS}
+
+    for log_path in ordered_logs + remaining_logs:
+        evaluation_name, results = parse_evaluation_log_json(log_path)
+        if not results:
+            continue
+
+        example_names.append(_base_problem_title(evaluation_name))
+        by_objective = {r.objective_method: r for r in results}
+
+        for method_id in ALL_METHODS:
+            r = by_objective.get(method_id)
+            if r is None:
+                time_by_method[method_id].append(np.nan)
+                timeout_by_method[method_id].append(False)
+                continue
+
+            method_labels[method_id] = r.method_abbreviation
+            value = r.total_time_sec if np.isfinite(r.total_time_sec) else np.nan
+            time_by_method[method_id].append(value)
+            timeout_by_method[method_id].append(r.timed_out)
+
+    method_order = [m for m in ALL_METHODS if any(np.isfinite(v) for v in time_by_method[m])]
+    display_method_labels = [method_labels.get(m, m) for m in method_order]
+
+    filtered_times = {m: time_by_method[m] for m in method_order}
+    filtered_timeouts = {m: timeout_by_method[m] for m in method_order}
+    return example_names, display_method_labels, filtered_times, filtered_timeouts
+
+
+def _plot_runtime_all_examples(log_paths: List[str], output_path: str):
+    """Create one grouped bar chart for runtime of all methods over all examples."""
+    example_names, method_labels, time_by_method, timeout_by_method = _collect_runtime_by_example(log_paths)
+    if not example_names or not method_labels:
+        return
+
+    method_ids = list(time_by_method.keys())
+    method_count = len(method_ids)
+    example_count = len(example_names)
+
+    x = np.arange(method_count, dtype=float)
+    width = min(0.8 / max(example_count, 1), 0.16)
+    offsets = (np.arange(example_count, dtype=float) - (example_count - 1) / 2.0) * width
+
+    fig, ax = plt.subplots(figsize=(max(12, method_count * 1.4), 6.8))
+    cmap = plt.get_cmap("tab10")
+
+    visible_values: List[float] = []
+    for method_id, values in time_by_method.items():
+        for idx, v in enumerate(values):
+            is_timeout = idx < len(timeout_by_method[method_id]) and timeout_by_method[method_id][idx]
+            if is_timeout:
+                continue
+            if np.isfinite(v):
+                visible_values.append(v)
+    if not visible_values:
+        plt.close(fig)
+        return
+
+    y_max = max(visible_values)
+    target_bar_ratio = 0.90
+    y_top = max(y_max / target_bar_ratio, y_max + 0.1)
+    timeout_bar_height = max(y_max * 0.006, 0.02)
+    timeout_label_y = timeout_bar_height + max(y_max * 0.006, 0.02)
+    value_label_pad = max(y_max * 0.015, 0.05)
+
+    for ex_idx, example_name in enumerate(example_names):
+        legend_drawn = False
+        color = cmap(ex_idx % 10)
+        for method_idx, method_id in enumerate(method_ids):
+            if ex_idx >= len(time_by_method[method_id]):
+                continue
+
+            raw_value = time_by_method[method_id][ex_idx]
+            is_timeout = timeout_by_method[method_id][ex_idx] if ex_idx < len(timeout_by_method[method_id]) else False
+            x_pos = x[method_idx] + offsets[ex_idx]
+
+            if is_timeout:
+                label = example_name if not legend_drawn else None
+                bars = ax.bar(
+                    [x_pos],
+                    [timeout_bar_height],
+                    width=width,
+                    label=label,
+                    color=color,
+                    alpha=0.88,
+                    edgecolor="black",
+                    linewidth=0.4,
+                )
+                bars[0].set_hatch("//")
+                legend_drawn = True
+                ax.text(
+                    x_pos,
+                    timeout_label_y,
+                    "TIMEOUT",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    rotation=90,
+                    color=color,
+                    fontweight="bold",
+                )
+                continue
+
+            if not np.isfinite(raw_value):
+                continue
+
+            label = example_name if not legend_drawn else None
+            bars = ax.bar(
+                [x_pos],
+                [raw_value],
+                width=width,
+                label=label,
+                color=color,
+                alpha=0.88,
+                edgecolor="black",
+                linewidth=0.4,
+            )
+            legend_drawn = True
+
+            bar = bars[0]
+            value_label_y = min(raw_value + value_label_pad, y_top * 0.98)
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                value_label_y,
+                f"{raw_value:.2f}s",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                rotation=90,
+            )
+
+    ax.set_ylim(0, y_top if y_top > 0 else 1)
+    ax.set_title("Runtime Comparison Across All Methods and Examples")
+    ax.set_xlabel("Method")
+    ax.set_ylabel("Time (seconds)")
+    ax.set_xticks(x)
+    ax.set_xticklabels(method_labels)
+    ax.grid(axis="y", alpha=0.3)
+    ax.legend(loc="upper left", ncols=2 if example_count >= 4 else 1)
+
+    timeout_note = "Timeout runs are tiny hatched bars at baseline with TIMEOUT labels"
+    ax.text(
+        0.99,
+        0.98,
+        timeout_note,
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=9,
+        bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "none", "pad": 2},
+    )
 
     plt.tight_layout()
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -325,6 +537,11 @@ def main():
 
     for log_path in logs:
         plot_from_log(log_path)
+
+    _plot_runtime_all_examples(
+        logs,
+        output_path=f"{COMPARISON_ROOT}/all_examples_runtime_comparison.png",
+    )
 
 
 if __name__ == "__main__":

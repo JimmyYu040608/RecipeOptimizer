@@ -13,7 +13,7 @@ PRODUCT_MAX = 10000 # Maximum allowable amount of any single product
 RECIPE_COST = 0.01 # Small cost to discourage extraneous recipes
 ALT_PENALTY = 1e-6 # Penalty weight for using alternate recipes, to be tuned based on the specific problem context
 WASTE_PENALTY = 1 # Penalty weight for waste in value+waste optimization, to be tuned based on the specific problem context
-POWER_PENALTY = 0.01 # Penalty weight for power consumption in value+power optimization, to be tuned based on the specific problem context
+POWER_PENALTY = 1 # Penalty weight for power consumption in value+power optimization, to be tuned based on the specific problem context
 
 PARETO_RESOLUTION = 20 # Resolution for sampling weights in weighted-sum multi-objective optimization, to be tuned based on the specific problem context and computational budget
 

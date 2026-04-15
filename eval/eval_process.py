@@ -19,7 +19,7 @@ class MethodConfig:
     graph_suffix: str
     graph_title: str
     print_graph: bool = False
-    timeout_sec: Optional[float] = 600 # time limit for the whole method, None = no limit
+    timeout_sec: Optional[float] = 3600 # time limit for the whole method, None = no limit
 
 
 @dataclass(frozen=True)

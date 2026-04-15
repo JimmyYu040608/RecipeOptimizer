@@ -17,6 +17,19 @@ def small_example():
         log_path=f"{METHOD_GRAPH_ROOT}/small_example/log.json",
     )
 
+def medium_example():
+    """Evaluate the medium example with shared dynamic evaluation pipeline."""
+    
+    config_medium = default_method_configs("medium_example", "Medium Example")
+    
+    return run_evaluation(
+        problem_factory=DemoProblems.complex_example_2,
+        method_configs=config_medium,
+        evaluation_name="Medium Example Evaluation",
+        output_dir=f"{METHOD_GRAPH_ROOT}/medium_example",
+        log_path=f"{METHOD_GRAPH_ROOT}/medium_example/log.json",
+    )
+
 def single_large_example():
     """Evaluate the single large example with shared dynamic evaluation pipeline."""
     
@@ -59,6 +72,7 @@ def eval_example_12():
 def main():
     """ Run evaluations only. Plotting is handled by eval.evaluate_log from JSON logs. """
     small_example()
+    medium_example()
     single_large_example()
     eval_example_5()
 
