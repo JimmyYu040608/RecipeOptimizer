@@ -1,6 +1,6 @@
 # ProductionLineOptimizer
 
-Demonstration of production line optimization and production graph generation by maximizing production of target products according to priorities and minimizing waste.
+Demonstration of production line optimization and production graph generation by maximizing production of target products according to priorities while minimizing waste and power consumption.
 
 ## Getting Started
 
@@ -9,7 +9,7 @@ This section brings you through setting up the environment for using ProductionL
 ### Python Libraries
 
 - Python 3.11.9 or higher
-- All required libraries are specified in 'requirements.txt'
+- All required libraries are specified in `requirements.txt`
   ```
   pip install -r requirements.txt
   ```
@@ -41,9 +41,13 @@ This section brings you through setting up the environment for using ProductionL
   ```
   py custom_draw.py
   ```
-- Evaluation and comparison utilities for plotting production vs waste metrics
+- Evaluation pipeline — runs all benchmark problems across all objective methods, writes JSON logs
   ```
-  py -m eval.comparison
+  py -m eval.evaluation
+  ```
+- Plot comparison charts from previously written evaluation logs (no re-solving required)
+  ```
+  py -m eval.evaluate_log
   ```
 
 ## Features
@@ -53,12 +57,15 @@ This section brings you through setting up the environment for using ProductionL
 - **Single-Objective Optimization (SOO)**
   - Maximize production value of target products
   - Minimize waste of intermediate products
-  - Combined objective with waste penalty (weighted approach)
+  - Combined objective with waste penalty
+  - Combined objective with power penalty
+  - Combined objective with both waste and power penalties
 
 - **Multi-Objective Optimization (MOO)**
   - Pareto front generation using weighted sum method
-  - Automatic best solution selection based on utopia point distance
-  - Normalized objective functions for balanced optimization
+  - Value + Waste two-objective optimization
+  - Value + Waste + Power three-objective optimization
+  - Automatic best solution selection based on normalized utopia point distance
 
 ### Graph Visualization
 
@@ -72,20 +79,25 @@ This section brings you through setting up the environment for using ProductionL
 - Recipe dependency validation
 - Input-output feasibility checking
 - Automatic problem reduction to remove irrelevant recipes
+- Reversible recipe pair detection and mutual-exclusion enforcement
 
 ## Repository Structure
 
 ```text
 /ProductionLineOptimizer
 ├── /resources
-│   └── data.json               # Game data from Satisfactory (recipes, items, buildings)
+│   ├── data.json               # Game data from Satisfactory (legacy)
+│   └── data_1.1.json           # Updated game data from Satisfactory (recipes, items, buildings)
 │
 ├── /src
-│   ├── common.py               # Common utilities (rounding, method types, weight generation)
+│   ├── utils.py                # Utilities (rounding, MethodTypes, ObjMethods, weight generation)
 │   ├── recipe.py               # Recipe, Product, Building classes and data loading
 │   ├── graph.py                # Graph structures (vertices, edges) and visualization
 │   ├── solver.py               # Optimization solver using OR-Tools (SCIP)
-│   └── shared_setup.py         # Demo problem setup utilities
+│   ├── demo_data.py            # Demo problem definitions (DemoItems, DemoRecipes, DemoProblems)
+│   └── /multi_objective
+│       ├── pick_best_pareto.py # Utopia point-based Pareto solution selection
+│       └── weight_estimate.py  # Normalization parameters for weighted sum method
 │
 ├── /SingleObjective
 │   ├── simple_example.py       # Simple examples with manual and optimized solutions
@@ -94,17 +106,18 @@ This section brings you through setting up the environment for using ProductionL
 │   └── extraordinary_example.py # Modular engine production scenario
 │
 ├── /MultiObjective
-│   ├── /src
-│   │   ├── pick_best_pareto.py # Utopia point-based Pareto solution selection
-│   │   └── weight_estimate.py  # Normalization parameters for weighted sum method
-│   └── value_waste_example.py  # Value-waste tradeoff optimization
+│   └── value_waste_example.py  # Value-waste tradeoff MOO demonstration
 │
 ├── /eval
-│   └── comparison.py           # Comparison plotting utilities using matplotlib
+│   ├── eval_process.py         # Core evaluation infrastructure (MethodConfig, run_evaluation)
+│   ├── evaluation.py           # Benchmark runner — solves all problems and writes JSON logs
+│   ├── evaluate_log.py         # Reads JSON logs and generates comparison bar charts
+│   └── comparison.py           # Standalone comparison plotting utilities
 │
 ├── /images                     # Generated visualization outputs
 │   ├── /demo                   # Demo example outputs
 │   ├── /draw                   # Custom drawing outputs
+│   ├── /eval                   # Evaluation comparison charts
 │   ├── /moo                    # Multi-objective optimization outputs
 │   └── /soo                    # Single-objective optimization outputs
 │
@@ -119,39 +132,80 @@ This section brings you through setting up the environment for using ProductionL
 ### Solver Configuration
 
 - Uses OR-Tools SCIP solver for mixed-integer linear programming
-- Configurable constraints:
-  - `RECIPE_MAX`: Maximum instances of any recipe (default: 100)
-  - `PRODUCT_MAX`: Maximum production rate of any product (default: 10000)
-  - `RECIPE_COST`: Small penalty to discourage unnecessary recipes (default: 0.01)
+- Configurable constants in `solver.py`:
+  - `RECIPE_MAX`: Maximum instances of any single recipe (default: 100)
+  - `PRODUCT_MAX`: Maximum production rate of any single product (default: 10000)
+  - `RECIPE_COST`: Small penalty to discourage extraneous recipes (default: 0.01)
+  - `ALT_PENALTY`: Extra penalty for using alternate recipes (default: 1e-6)
+  - `WASTE_PENALTY`: Weight of waste in single-objective combined methods (default: 1)
+  - `POWER_PENALTY`: Weight of power in single-objective combined methods (default: 1)
+  - `PARETO_RESOLUTION`: Sampling resolution for weighted-sum MOO (default: 20)
 
 ### Data Structures
 
+- **Building**: Represents a machine type with name and power consumption
 - **Product**: Represents items with name and sink point value
-- **Recipe**: Defines input/output rates and building requirements
-- **Vertices**: SourceVertex, SinkVertex, MachineVertex, WasteVertex
+- **Recipe**: Defines input/output rates, building type, alternate flag, and per-instance power cost
+- **Vertices**: `SourceVertex`, `SinkVertex`, `MachineVertex`, `WasteVertex`
 - **FlowEdge**: Represents product flow between vertices with provide/consume rates
 
 ### Optimization Objectives
 
-1. **S_VALUE**: Maximize `Σ(product_rate × score)` for target products
-2. **S_WASTE**: Minimize `Σ(waste_rate × sink_points)` for non-target products
-3. **S_VALUE_WASTE**: Combined objective with fixed waste penalty weight
-4. **M_VALUE_WASTE**: Multi-objective with Pareto front exploration (21 weight combinations)
+| ID | Class | Description |
+|----|-------|-------------|
+| `S_VALUE` | SOO | Maximize `Σ(production_rate × score)` for target products |
+| `S_WASTE` | SOO | Minimize `Σ(leftover_rate)` for non-target products |
+| `S_VALUE_WASTE` | SOO | Maximize value with fixed waste penalty |
+| `S_VALUE_POWER` | SOO | Maximize value with fixed power-consumption penalty |
+| `S_VALUE_WASTE_POWER` | SOO | Maximize value with both waste and power penalties |
+| `M_VALUE_WASTE` | MOO | Weighted-sum Pareto exploration over value and waste |
+| `M_VALUE_WASTE_POWER` | MOO | Weighted-sum Pareto exploration over value, waste, and power |
+
+MOO methods normalize each objective to [0, 1] and select the solution closest to the utopia point.
+
+### Evaluation Pipeline
+
+`eval/eval_process.py` provides:
+- `MethodConfig` — describes a single method run (name, objective, graph settings, timeout)
+- `MethodEvaluationResult` — stores outcome metrics (value, waste, power, time, weights)
+- `default_method_configs()` — creates a standard 7-method configuration set
+- `run_evaluation()` — executes all methods for a problem, writes a `log.json`
+
+`eval/evaluation.py` runs the benchmark problems and writes logs:
+```
+py -m eval.evaluation
+```
+
+`eval/evaluate_log.py` reads the JSON logs and generates comparison bar charts without re-solving:
+```
+py -m eval.evaluate_log
+```
 
 ## Example Problems
 
-### Demo Problem
+### Demo Problem (`DemoProblems.demo_example`)
 - **Inputs**: Iron Ingot (120/min), Copper Ingot (60/min)
 - **Outputs**: Reinforced Iron Plate (score: 1000), Copper Wire (score: 20)
 - **Recipes**: Iron Screw, Copper Screw, Iron Plate, Reinforced Iron Plate, Copper Wire
 
-### Complex Example (Fuel Production)
+### Small Example (`DemoProblems.complex_example`)
 - **Inputs**: Crude Oil (300/min), Water (800/min), Coal (533.33/min), Sulfur (533.33/min)
 - **Outputs**: Fuel (score: 600), Turbofuel (score: 2000)
 
-### Extraordinary Example (Modular Engine)
+### Medium Example (`DemoProblems.complex_example_2`)
+- **Inputs**: Iron Ore (1000/min), Copper Ore (800/min), Coal (700/min), Limestone (700/min)
+- **Outputs**: Heavy Modular Frame (score: 10800), Stator (score: 240)
+
+### Single Large Example (`DemoProblems.single_large_example`)
 - **Inputs**: Iron Ore (1000/min), Copper Ore (800/min), Coal (900/min), Crude Oil (500/min)
 - **Outputs**: Modular Engine (score: 1000)
+
+### Example-5 (`DemoProblems.example_5`)
+- **Inputs**: Iron Ore (2000/min), Copper Ore (1000/min), Coal (1000/min), Limestone (500/min), Wood (180/min), Water (600/min), Crude Oil (100/min)
+- **Outputs**: Smart Plating, Versatile Framework, Automated Wiring, Modular Engine, Adaptive Control Unit
+
+### Example-12 (`DemoProblems.example_12`)
+- 14-input, 12-output large-scale benchmark covering most Satisfactory end-game items (Smart Plating → AI Expansion Server)
 
 ## Dependencies
 
