@@ -15,7 +15,7 @@ ALT_PENALTY = 1e-6 # Penalty weight for using alternate recipes, to be tuned bas
 WASTE_PENALTY = 1 # Penalty weight for waste in value+waste optimization, to be tuned based on the specific problem context
 POWER_PENALTY = 1 # Penalty weight for power consumption in value+power optimization, to be tuned based on the specific problem context
 
-PARETO_RESOLUTION = 20 # Resolution for sampling weights in weighted-sum multi-objective optimization, to be tuned based on the specific problem context and computational budget
+PARETO_RESOLUTION = 10 # Resolution for sampling weights in weighted-metric multi-objective optimization, to be tuned based on the specific problem context and computational budget
 
 class ProductionProblem:
     def __init__(self, recipes: List[Recipe], inputs: Dict[Product, float], outputs: Dict[Product, float], obj_method=ObjMethods.S_VALUE):
@@ -196,17 +196,6 @@ class ProductionProblem:
             pair_ct.SetCoefficient(active_vars[recipe_b.name], 1)
     
     
-    # def _multi_obj_solve(self, contribution_list, resolution):
-    #     # Apply integer simplex technique to generate samples where w1+w2+...+wn = 1
-    #     dimension = len(contribution_list)
-    #     integer_points = integer_simplex(dimension, resolution)
-    #     weights = np.array(integer_points) / resolution
-    #     # Try out all pareto_solutions
-    #     pareto_solutions = []
-    #     for w in weights:
-    #         # contribution_list is assumed to be processed independently for each objective (e.g. whether to negate it for minimization)
-    #         weighted_contribution = sum(w[i] * contribution_list[i] for i in range(dimension))
-    
     """ Helper functions in creating objective functions for all variants of single-objective optimization """
     def _add_obj_coeff(self, var, delta: float):
         """Accumulate objective coefficient for a variable instead of overwriting it."""
@@ -296,7 +285,7 @@ class ProductionProblem:
     def _multi_obj_value_waste(self):
         """ Multi-objective: maximize production score and minimize waste simultaneously """
         
-        from src.multi_objective.weight_estimate import normalize, ws_norm_params
+        from src.multi_objective.weight_estimate import normalize, wm_norm_params
         
         resolution = PARETO_RESOLUTION # Sampled step = 1/resolution
         weights = np.array(integer_simplex(2, resolution), dtype=float) / resolution
@@ -311,7 +300,7 @@ class ProductionProblem:
         
         # Obtain normalization parameters for this problem
         problem_obj = {'recipes': self.recipes, 'inputs': self.inputs, 'outputs': self.outputs}
-        params = ws_norm_params(problem_obj, ['value', 'waste'])
+        params = wm_norm_params(problem_obj, ['value', 'waste'])
         f1_best, f1_worst = params['value']
         f2_best, f2_worst = params['waste']
         waste_norm_scale = 1 / (abs(f2_worst - f2_best) + 1e-10)
@@ -391,7 +380,7 @@ class ProductionProblem:
     def _multi_obj_value_waste_power(self):
         """ Multi-objective: maximize production score, minimize waste, and minimize power simultaneously """
 
-        from src.multi_objective.weight_estimate import normalize, ws_norm_params
+        from src.multi_objective.weight_estimate import normalize, wm_norm_params
 
         resolution = PARETO_RESOLUTION # Sampled step = 1/resolution
         weights = np.array(integer_simplex(3, resolution), dtype=float) / resolution
@@ -406,7 +395,7 @@ class ProductionProblem:
 
         # Obtain normalization parameters for this problem
         problem_obj = {'recipes': self.recipes, 'inputs': self.inputs, 'outputs': self.outputs}
-        params = ws_norm_params(problem_obj, ['value', 'waste', 'power'])
+        params = wm_norm_params(problem_obj, ['value', 'waste', 'power'])
         f1_best, f1_worst = params['value']
         f2_best, f2_worst = params['waste']
         f3_best, f3_worst = params['power']
@@ -548,10 +537,10 @@ class ProductionProblem:
         # Single Objective Method 5: Maximize value with both waste and power consumption penalty
         elif self.obj_method == ObjMethods.S_VALUE_WASTE_POWER:
             self._single_obj_process([self._set_obj_value, self._set_obj_waste, self._set_obj_power])
-        # Multi-Objective Method 1: Maximize total scores given by target products and minimize waste (weighted-sum method)
+        # Multi-Objective Method 1: Maximize total scores given by target products and minimize waste (weighted-metric method)
         elif self.obj_method == ObjMethods.M_VALUE_WASTE:
             self._multi_obj_value_waste()
-        # Multi-Objective Method 2: Maximize value and minimize waste and power (weighted-sum method)
+        # Multi-Objective Method 2: Maximize value and minimize waste and power (weighted-metric method)
         elif self.obj_method == ObjMethods.M_VALUE_WASTE_POWER:
             self._multi_obj_value_waste_power()
         else:

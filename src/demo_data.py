@@ -69,16 +69,15 @@ class DemoProblems:
         recipes = load_recipes()
         # Input materials: Raw materials and premature products
         inputs = {
-            "Crude Oil": 300,
-            "Water": 800,
-            "Coal": 533.33,
-            "Sulfur": 533.33,
+            "Iron Ore": 500,
+            "Copper Ore": 100,
+            "Coal": 80,
         }
         # Output materials: Medium-sized products
         inputs = {Product(k, get_item_sink_pt(k)): v for k, v in inputs.items()}
         output_scores = {
-            "Fuel": 600,
-            "Turbofuel": 2000,
+            "Reinforced Iron Plate": 120,
+            "Motor": 1520,
         }
         output_scores = {Product(k, get_item_sink_pt(k)): v for k, v in output_scores.items()}
         # Problem formation

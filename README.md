@@ -33,7 +33,7 @@ This section brings you through setting up the environment for using ProductionL
   py -m SingleObjective.complex_example
   py -m SingleObjective.extraordinary_example
   ```
-- Multi-objective optimization example demonstrates value-waste tradeoff using weighted sum method
+- Multi-objective optimization example demonstrates value-waste tradeoff using weighted metric method
   ```
   py -m MultiObjective.value_waste_example
   ```
@@ -62,7 +62,7 @@ This section brings you through setting up the environment for using ProductionL
   - Combined objective with both waste and power penalties
 
 - **Multi-Objective Optimization (MOO)**
-  - Pareto front generation using weighted sum method
+  - Pareto front generation using weighted metric method
   - Value + Waste two-objective optimization
   - Value + Waste + Power three-objective optimization
   - Automatic best solution selection based on normalized utopia point distance
@@ -97,7 +97,7 @@ This section brings you through setting up the environment for using ProductionL
 │   ├── demo_data.py            # Demo problem definitions (DemoItems, DemoRecipes, DemoProblems)
 │   └── /multi_objective
 │       ├── pick_best_pareto.py # Utopia point-based Pareto solution selection
-│       └── weight_estimate.py  # Normalization parameters for weighted sum method
+│       └── weight_estimate.py  # Normalization parameters for weighted metric method
 │
 ├── /SingleObjective
 │   ├── simple_example.py       # Simple examples with manual and optimized solutions
@@ -139,7 +139,7 @@ This section brings you through setting up the environment for using ProductionL
   - `ALT_PENALTY`: Extra penalty for using alternate recipes (default: 1e-6)
   - `WASTE_PENALTY`: Weight of waste in single-objective combined methods (default: 1)
   - `POWER_PENALTY`: Weight of power in single-objective combined methods (default: 1)
-  - `PARETO_RESOLUTION`: Sampling resolution for weighted-sum MOO (default: 20)
+  - `PARETO_RESOLUTION`: Sampling resolution for weighted-metric MOO (default: 20)
 
 ### Data Structures
 
@@ -158,8 +158,8 @@ This section brings you through setting up the environment for using ProductionL
 | `S_VALUE_WASTE` | SOO | Maximize value with fixed waste penalty |
 | `S_VALUE_POWER` | SOO | Maximize value with fixed power-consumption penalty |
 | `S_VALUE_WASTE_POWER` | SOO | Maximize value with both waste and power penalties |
-| `M_VALUE_WASTE` | MOO | Weighted-sum Pareto exploration over value and waste |
-| `M_VALUE_WASTE_POWER` | MOO | Weighted-sum Pareto exploration over value, waste, and power |
+| `M_VALUE_WASTE` | MOO | Weighted-metric Pareto exploration over value and waste |
+| `M_VALUE_WASTE_POWER` | MOO | Weighted-metric Pareto exploration over value, waste, and power |
 
 MOO methods normalize each objective to [0, 1] and select the solution closest to the utopia point.
 

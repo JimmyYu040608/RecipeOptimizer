@@ -1,4 +1,4 @@
-""" Helpers for estimating normalization parameters used by weighted-sum multi-objective optimization """
+""" Helpers for estimating normalization parameters used by weighted-metric multi-objective optimization """
 
 from typing import Dict, List, Tuple, TypedDict
 
@@ -160,8 +160,8 @@ def _estimate_power_bounds(problem_obj: ProblemObj = None) -> Tuple[float, float
     return f_best, f_worst
 
 
-def ws_norm_params(problem_obj: ProblemObj = None, objectives: List[str] = None) -> Dict[str, Tuple[float, float]]:
-    """ Generalized normalization parameter estimator for weighted-sum objectives
+def wm_norm_params(problem_obj: ProblemObj = None, objectives: List[str] = None) -> Dict[str, Tuple[float, float]]:
+    """ Generalized normalization parameter estimator for weighted-metric objectives
     Supported objective keys: value, waste, power
     Returns: {objective_name: (best, worst)}
     """

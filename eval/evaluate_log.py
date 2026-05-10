@@ -3,6 +3,7 @@ import json
 from typing import Dict, List, Optional
 
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import numpy as np
 
 from eval.eval_process import MethodEvaluationResult
@@ -42,12 +43,17 @@ PAIRED_METHODS = [
 ALL_METHODS = [
     "s_value",
     "s_waste",
-    "s_value_waste",
     "s_value_power",
-    "s_value_waste_power",
+    "s_value_waste",
     "m_value_waste",
+    "s_value_waste_power",
     "m_value_waste_power",
 ]
+
+METHOD_BAR_COLOR_TIME = "#FF8C00"  # orange for M-methods
+_METHOD_ORDER_MAP = {m: i for i, m in enumerate(ALL_METHODS)}
+TIMEOUT_BAR_HATCH = "////"
+TIMEOUT_BAR_ALPHA = 0.45
 
 
 def parse_evaluation_log_json(log_path: str) -> tuple[str, List[MethodEvaluationResult]]:
@@ -119,7 +125,7 @@ def _metric_values(results: List[MethodEvaluationResult], metric_key: str) -> Li
     raise ValueError(f"Unsupported metric key: {metric_key}")
 
 
-def _plot_multi_metric_bars(results: List[MethodEvaluationResult], metric_keys: List[str], title: str, output_path: str, bar_width: Optional[float] = None):
+def _plot_multi_metric_bars(results: List[MethodEvaluationResult], metric_keys: List[str], title: str, output_path: str, bar_width: Optional[float] = None, figsize: Optional[tuple] = None):
     if not results:
         return
 
@@ -157,10 +163,12 @@ def _plot_multi_metric_bars(results: List[MethodEvaluationResult], metric_keys: 
     norm_by_metric = {k: _normalize_series(raw_by_metric[k]) for k in metric_keys}
 
     if is_two_method_plot:
-        fig, ax = plt.subplots(figsize=(4.2, 4.8))
+        default_size = figsize if figsize is not None else (4.2, 4.8)
+        fig, ax = plt.subplots(figsize=default_size)
         fig.subplots_adjust(left=0.18, right=0.96, top=0.88, bottom=0.16)
     else:
-        fig, ax = plt.subplots(figsize=(12, 6))
+        default_size = figsize if figsize is not None else (12, 6)
+        fig, ax = plt.subplots(figsize=default_size)
 
     for metric_key in metric_keys:
         bars = ax.bar(
@@ -183,12 +191,15 @@ def _plot_multi_metric_bars(results: List[MethodEvaluationResult], metric_keys: 
                 rotation=90,
             )
 
-    ax.set_title(title)
-    ax.set_xlabel("Method")
+    ax.set_title(title, fontsize=14)
+    ax.set_xlabel("Method", fontsize=12)
     ax.set_ylabel("Normalized Metric Value (0-1)")
     ax.set_xticks(x)
-    ax.set_xticklabels(method_ticks)
-    ax.set_ylim(0, 1.22)
+    ax.set_xticklabels(method_ticks, fontsize=12)
+    # Scale headroom so rotated bar labels never clip in shorter figures
+    fig_h = default_size[1]
+    ylim_top = max(1.22, 1.0 + 1.32 / fig_h)
+    ax.set_ylim(0, ylim_top)
     if is_two_method_plot:
         half_group_span = ((len(metric_keys) - 1) * width) + (width * 0.55)
         ax.set_xlim(x[0] - half_group_span, x[1] + half_group_span)
@@ -208,6 +219,7 @@ def _plot_time_bars_with_timeout_handling(results: List[MethodEvaluationResult],
     if not results:
         return
 
+    results = sorted(results, key=lambda r: _METHOD_ORDER_MAP.get(r.objective_method, len(ALL_METHODS)))
     labels = [r.method_abbreviation for r in results]
     times = np.array([r.total_time_sec if np.isfinite(r.total_time_sec) else np.nan for r in results], dtype=float)
     timed_out = np.array([r.timed_out for r in results], dtype=bool)
@@ -216,16 +228,26 @@ def _plot_time_bars_with_timeout_handling(results: List[MethodEvaluationResult],
     if non_timeout.size == 0:
         return
 
-    # Timeout bars are intentionally set to 0 so finished methods remain readable.
-    display_times = np.where(timed_out, 0.0, np.where(np.isfinite(times), times, 0.0))
-    y_top = max(np.max(non_timeout) * 1.18, np.max(non_timeout) + 0.5)
+    # Timeout bars are intentionally drawn above axis limit to indicate "beyond scale".
+    y_max = np.max(non_timeout)
+    y_top = max(y_max * 1.18, y_max + 0.5)
+    timeout_bar_height = y_top * 1.25
+    display_times = np.where(timed_out, timeout_bar_height, np.where(np.isfinite(times), times, 0.0))
     label_pad = max(y_top * 0.02, 0.05)
-    timeout_label_y = max(y_top * 0.03, 0.08)
+    timeout_label_y = min(y_max + label_pad, y_top * 0.98)
 
     x = np.arange(len(results), dtype=float)
+    bar_colors = [METHOD_BAR_COLOR_TIME if r.objective_method.startswith("m_") else METRIC_COLORS["time"] for r in results]
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    bars = ax.bar(x, display_times, width=0.6, color=METRIC_COLORS["time"], alpha=0.9)
+    bars = ax.bar(x, display_times, width=0.6, color=bar_colors, alpha=0.9)
+
+    for idx, bar in enumerate(bars):
+        if timed_out[idx]:
+            bar.set_hatch(TIMEOUT_BAR_HATCH)
+            bar.set_alpha(TIMEOUT_BAR_ALPHA)
+            bar.set_edgecolor("black")
+            bar.set_linewidth(0.8)
 
     for idx, bar in enumerate(bars):
         raw = times[idx]
@@ -249,13 +271,18 @@ def _plot_time_bars_with_timeout_handling(results: List[MethodEvaluationResult],
             rotation=90,
         )
 
-    ax.set_title(title)
-    ax.set_xlabel("Method")
+    ax.set_title(title, fontsize=14)
+    ax.set_xlabel("Method", fontsize=12)
     ax.set_ylabel("Time (seconds)")
     ax.set_xticks(x)
-    ax.set_xticklabels(labels)
+    ax.set_xticklabels(labels, fontsize=12)
     ax.set_ylim(0, y_top if y_top > 0 else 1)
     ax.grid(axis="y", alpha=0.3)
+    method_legend_handles = [
+        mpatches.Patch(facecolor=METRIC_COLORS["time"], alpha=0.9, label="Single-Objective"),
+        mpatches.Patch(facecolor=METHOD_BAR_COLOR_TIME, alpha=0.9, label="Multi-Objective"),
+    ]
+    ax.legend(handles=method_legend_handles, loc="upper left")
 
     plt.tight_layout()
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -348,9 +375,9 @@ def _plot_runtime_all_examples(log_paths: List[str], output_path: str):
     y_max = max(visible_values)
     target_bar_ratio = 0.90
     y_top = max(y_max / target_bar_ratio, y_max + 0.1)
-    timeout_bar_height = max(y_max * 0.006, 0.02)
-    timeout_label_y = timeout_bar_height + max(y_max * 0.006, 0.02)
     value_label_pad = max(y_max * 0.015, 0.05)
+    timeout_bar_height = y_top * 1.25
+    timeout_label_y = min(y_max + value_label_pad, y_top * 0.98)
 
     for ex_idx, example_name in enumerate(example_names):
         legend_drawn = False
@@ -362,6 +389,7 @@ def _plot_runtime_all_examples(log_paths: List[str], output_path: str):
             raw_value = time_by_method[method_id][ex_idx]
             is_timeout = timeout_by_method[method_id][ex_idx] if ex_idx < len(timeout_by_method[method_id]) else False
             x_pos = x[method_idx] + offsets[ex_idx]
+            bar_color = METHOD_BAR_COLOR_TIME if method_id.startswith("m_") else color
 
             if is_timeout:
                 label = example_name if not legend_drawn else None
@@ -370,12 +398,12 @@ def _plot_runtime_all_examples(log_paths: List[str], output_path: str):
                     [timeout_bar_height],
                     width=width,
                     label=label,
-                    color=color,
-                    alpha=0.88,
+                    color=bar_color,
+                    alpha=TIMEOUT_BAR_ALPHA,
                     edgecolor="black",
-                    linewidth=0.4,
+                    linewidth=0.8,
                 )
-                bars[0].set_hatch("//")
+                bars[0].set_hatch(TIMEOUT_BAR_HATCH)
                 legend_drawn = True
                 ax.text(
                     x_pos,
@@ -385,7 +413,7 @@ def _plot_runtime_all_examples(log_paths: List[str], output_path: str):
                     va="bottom",
                     fontsize=8,
                     rotation=90,
-                    color=color,
+                    color=bar_color,
                     fontweight="bold",
                 )
                 continue
@@ -399,7 +427,7 @@ def _plot_runtime_all_examples(log_paths: List[str], output_path: str):
                 [raw_value],
                 width=width,
                 label=label,
-                color=color,
+                color=bar_color,
                 alpha=0.88,
                 edgecolor="black",
                 linewidth=0.4,
@@ -419,15 +447,25 @@ def _plot_runtime_all_examples(log_paths: List[str], output_path: str):
             )
 
     ax.set_ylim(0, y_top if y_top > 0 else 1)
-    ax.set_title("Runtime Comparison Across All Methods and Examples")
-    ax.set_xlabel("Method")
+    ax.set_title("Runtime Comparison Across All Methods and Examples", fontsize=14)
+    ax.set_xlabel("Method", fontsize=12)
     ax.set_ylabel("Time (seconds)")
     ax.set_xticks(x)
-    ax.set_xticklabels(method_labels)
+    ax.set_xticklabels(method_labels, fontsize=12)
     ax.grid(axis="y", alpha=0.3)
-    ax.legend(loc="upper left", ncols=2 if example_count >= 4 else 1)
+    existing_handles, existing_labels = ax.get_legend_handles_labels()
+    method_handles = [
+        mpatches.Patch(facecolor=METRIC_COLORS["time"], alpha=0.9, label="Single-Objective"),
+        mpatches.Patch(facecolor=METHOD_BAR_COLOR_TIME, alpha=0.9, label="Multi-Objective"),
+    ]
+    ax.legend(
+        handles=existing_handles + method_handles,
+        labels=existing_labels + [h.get_label() for h in method_handles],
+        loc="upper left",
+        ncols=2 if example_count >= 4 else 1,
+    )
 
-    timeout_note = "Timeout runs are tiny hatched bars at baseline with TIMEOUT labels"
+    timeout_note = "Timeout runs are over-scale hatched bars (beyond visible y-axis range)"
     ax.text(
         0.99,
         0.98,
@@ -508,6 +546,14 @@ def plot_from_log(log_path: str):
             metric_keys=["value", "waste", "power"],
             title=f"{problem_title_prefix}: Single-Objective Methods (Value/Waste/Power)",
             output_path=f"{COMPARISON_ROOT}/{problem_key}_single_comparison.png",
+        )
+        # 3b) Half-height variant for presentation layouts
+        _plot_multi_metric_bars(
+            single_results,
+            metric_keys=["value", "waste", "power"],
+            title=f"{problem_title_prefix}: Single-Objective Methods (Value/Waste/Power)",
+            output_path=f"{COMPARISON_ROOT}/{problem_key}_single_comparison_half.png",
+            figsize=(12, 3),
         )
 
     # 4) Local paired comparisons: single vs multi for same objective set

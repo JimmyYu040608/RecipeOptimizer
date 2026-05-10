@@ -1,4 +1,4 @@
-# Scalarization: Weighted Sum Method
+# Scalarization: Weighted Metric Method
 from src.utils import ObjMethods
 from src.demo_data import DemoProblems
 

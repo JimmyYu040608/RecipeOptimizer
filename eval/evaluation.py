@@ -75,13 +75,10 @@ def main():
     medium_example()
     single_large_example()
     eval_example_5()
-
-    # example12_results = eval_example_12()
-    # plot_comparison(
-    #     example12_results,
-    #     title="Example-12: Value, Waste, Power, and Time by Method",
-    #     output_path=f"{COMPARISON_ROOT}/example_12_comparison.png",
-    # )
+    # eval_example_12()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Evaluation interrupted by user.")
